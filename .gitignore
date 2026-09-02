@@ -1,0 +1,18 @@
+node_modules/
+
+# Credenciais — nunca commitar. Ver .env.example.
+.env
+.env.*
+!.env.example
+
+# Escritos em tempo de execução
+logs/
+logs-dev/
+uploads/
+
+# Ferramentas locais do agente (skills e settings da máquina de quem edita)
+.claude/
+
+# Sistema
+Thumbs.db
+.DS_Store

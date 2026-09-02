@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Rádios</title>
+    <link rel="icon" type="image/png" href="/radios/favicon.png">
+    <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
+         aplica quando corre. Adiado para depois do parse, o browser chega a pintar
+         a página em cru. O ficheiro é local, não vem de CDN nenhum. O lucide fica
+         adiado — é só ícones, e o script de baixo já espera por ele. -->
+    <script src="/radios/tailwind.global.js"></script>
+    <script src="/radios/lucide.min.js" defer></script>
+    <style>
+        /* `hidden` é uma classe do Tailwind, portanto só existe depois de ele
+           compilar. Declará-la aqui garante que os modais e o toast não aparecem
+           empilhados na fracção de segundo anterior. */
+        .hidden { display: none; }
+
+        body, input, select, textarea, button {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        /* Cabeçalho da tabela colado ao topo enquanto se percorre o parque: são
+           400 linhas e sem isto perde-se a conta às colunas. */
+        thead.pegajoso th { position: sticky; top: 0; z-index: 10; }
+        tbody tr { line-height: 1.3; }
+        .accao {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 6px; border: none;
+            background: transparent; cursor: pointer; flex-shrink: 0;
+            transition: background-color .15s, transform .1s;
+        }
+        .accao:hover { transform: scale(1.12); }
+        .accao:disabled { opacity: .25; cursor: not-allowed; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded">Saltar para o conteúdo</a>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite" class="fixed top-5 right-5 z-50 hidden items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white" style="min-width:260px">
+    <span id="toastIcone" aria-hidden="true"></span>
+    <span id="toastMsg"></span>
+</div>
+
+<!-- Só o que corre mal tem ecrã próprio: o SSPI não pede credenciais a ninguém,
+     portanto não há ecrã de arranque nem de login para mostrar. -->
+<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <img src="/radios/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+    </div>
+</div>
+
+<div id="app" class="max-w-[1400px] mx-auto p-6">
+
+    <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center gap-4">
+            <img src="/radios/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900">Gestão de Rádios</h1>
+                <p class="text-slate-500 text-xs">Parque, entregas, avarias e conferência</p>
+            </div>
+        </div>
+        <div class="text-right flex flex-col items-end gap-1">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                Utilizador: <span id="nomeUtilizador">a carregar…</span>
+            </span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+        </div>
+    </header>
+
+    <!-- Cartões de contagem -->
+    <section aria-label="Resumo do parque" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <button type="button" data-estado="" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Parque total</p>
+            <p id="kpiTotal" class="text-2xl font-extrabold text-slate-900">—</p>
+        </button>
+        <button type="button" data-estado="atribuido" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Entregues</p>
+            <p id="kpiAtribuidos" class="text-2xl font-extrabold text-blue-700">—</p>
+        </button>
+        <button type="button" data-estado="disponivel" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Disponíveis</p>
+            <p id="kpiDisponiveis" class="text-2xl font-extrabold text-emerald-700">—</p>
+        </button>
+        <button type="button" data-estado="avariado" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Avariados</p>
+            <p id="kpiAvariados" class="text-2xl font-extrabold text-amber-700">—</p>
+        </button>
+        <button type="button" data-estado="abatido" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Abatidos</p>
+            <p id="kpiAbatidos" class="text-2xl font-extrabold text-slate-600">—</p>
+        </button>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Sem nº de série</p>
+            <p id="kpiSemSerie" class="text-2xl font-extrabold text-slate-600">—</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">de origem, não é erro</p>
+        </div>
+    </section>
+
+    <!-- Separadores -->
+    <nav class="flex gap-1 mb-4 border-b border-slate-200" role="tablist">
+        <button role="tab" data-aba="parque" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-700">Parque</button>
+        <button role="tab" data-aba="conferencia" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+            Conferência <span id="pastilhaConferencia" class="ml-1 text-[11px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full hidden"></span>
+        </button>
+        <button role="tab" data-aba="sistema" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700">Sistema TETRA</button>
+    </nav>
+
+    <main id="conteudo">
+
+        <!-- ─── Parque ─────────────────────────────────────── -->
+        <section id="abaParque">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+                <div class="flex-1 min-w-[240px]">
+                    <label for="procura" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
+                    <input id="procura" type="search" placeholder="Indicativo, nº de série, alias, modelo ou quem o tem…"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="filtroEstado" class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
+                    <select id="filtroEstado" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Todos</option>
+                        <option value="atribuido">Entregues</option>
+                        <option value="disponivel">Disponíveis</option>
+                        <option value="avariado">Avariados</option>
+                        <option value="abatido">Abatidos</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="filtroMarca" class="block text-xs font-semibold text-slate-600 mb-1">Marca</label>
+                    <select id="filtroMarca" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Todas</option>
+                    </select>
+                </div>
+                <button id="btnNovo" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+                    + Novo rádio
+                </button>
+                <button id="btnExportar" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                    Exportar CSV
+                </button>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                            <tr>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Indicativo</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nº de série</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Equipamento</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Estado</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Quem o tem</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Entregue</th>
+                                <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaParque" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <p id="rodapeParque" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+            </div>
+        </section>
+
+        <!-- ─── Conferência ────────────────────────────────── -->
+        <section id="abaConferencia" class="hidden">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
+                <p class="text-sm text-slate-600 mb-3">
+                    Cruzamento entre as respostas ao questionário e o que está registado. Só conta a
+                    <strong>última resposta</strong> de cada matrícula.
+                </p>
+                <div id="chipsConferencia" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                            <tr>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Matrícula</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nome</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Respondeu</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Declarou</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Registado</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Baterias</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Situação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaConferencia" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <p id="rodapeConferencia" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+            </div>
+        </section>
+
+        <!-- ─── Sistema TETRA ──────────────────────────────── -->
+        <section id="abaSistema" class="hidden">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+                <div class="flex-1 min-w-[240px]">
+                    <label for="procuraSistema" class="block text-xs font-semibold text-slate-600 mb-1">Procurar no registo do sistema</label>
+                    <input id="procuraSistema" type="search" placeholder="Alias, nº de série ou ID de rádio…"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <p class="text-xs text-slate-500 max-w-md">
+                    Exportação da consola TETRA: o que está <em>programado</em>, não quem o tem.
+                    Só leitura — quem manda aqui é a consola.
+                </p>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                            <tr>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Alias</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Indicativo</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nº de série</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">ID de rádio</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Grupo de conversação</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Perfil</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">No parque</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaSistema" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <p id="rodapeSistema" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+            </div>
+        </section>
+    </main>
+</div>
+
+<!-- ─── Painel de detalhe ─────────────────────────────────── -->
+<div id="painel" class="hidden fixed inset-0 z-40 flex justify-end">
+    <div class="absolute inset-0 bg-slate-900/40" data-fechar></div>
+    <aside role="dialog" aria-modal="true" aria-labelledby="painelTitulo"
+           class="relative bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl">
+        <header class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-start justify-between gap-4">
+            <div>
+                <h2 id="painelTitulo" class="text-lg font-extrabold text-slate-900">Rádio</h2>
+                <p id="painelSubtitulo" class="text-xs text-slate-500"></p>
+            </div>
+            <button data-fechar class="accao text-slate-500 hover:bg-slate-100" aria-label="Fechar">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </header>
+        <div id="painelCorpo" class="p-6 space-y-6"></div>
+    </aside>
+</div>
+
+<!-- ─── Modal de formulário ───────────────────────────────── -->
+<div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-slate-900/50" data-fechar-modal></div>
+    <div role="dialog" aria-modal="true" aria-labelledby="modalTitulo"
+         class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <header class="px-6 py-4 border-b border-slate-200">
+            <h2 id="modalTitulo" class="text-base font-extrabold text-slate-900"></h2>
+            <p id="modalAjuda" class="text-xs text-slate-500 mt-0.5"></p>
+        </header>
+        <form id="modalForm" class="p-6 space-y-4"></form>
+        <footer class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-2xl">
+            <button type="button" data-fechar-modal class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancelar</button>
+            <button type="submit" form="modalForm" id="modalGravar" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Gravar</button>
+        </footer>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+const API = '/api/radios';
+
+const estado = {
+  permissoes: null,
+  radios: [],
+  conferencia: null,
+  filtros: { q: '', estado: '', marca: '' },
+  filtroConferencia: '',
+  aba: 'parque',
+  radioAberto: null,
+};
+
+// ─── Utilitários ───────────────────────────────────────────
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/**
+ * Datas em dd/mm/aaaa, lidas em UTC.
+ *
+ * A base guarda DATE e o SQL Server devolve-a como meia-noite UTC. Ler as
+ * componentes locais fazia a data recuar um dia em qualquer fuso a oeste de
+ * Lisboa — e a intranet é consultada de casa.
+ */
+function dataPt(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return esc(v);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+let toastTimer = null;
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  const cor = tipo === 'erro' ? 'bg-red-600' : tipo === 'aviso' ? 'bg-amber-600' : 'bg-emerald-600';
+  el.className = `fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white ${cor}`;
+  document.getElementById('toastIcone').innerHTML =
+    `<i data-lucide="${tipo === 'erro' ? 'alert-circle' : tipo === 'aviso' ? 'alert-triangle' : 'check-circle'}" class="w-5 h-5"></i>`;
+  document.getElementById('toastMsg').textContent = msg;
+  if (window.lucide) lucide.createIcons();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+async function pedir(caminho, opcoes) {
+  const r = await fetch(API + caminho, Object.assign({ headers: { 'Accept': 'application/json' } }, opcoes));
+  let corpo = null;
+  try { corpo = await r.json(); } catch (e) { /* resposta sem JSON */ }
+  if (!r.ok) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+  return corpo;
+}
+
+function enviar(caminho, dados, metodo) {
+  return pedir(caminho, {
+    method: metodo || 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(dados || {}),
+  });
+}
+
+// ─── Etiquetas ─────────────────────────────────────────────
+
+const ESTADOS = {
+  atribuido:  { texto: 'Entregue',   classe: 'bg-blue-100 text-blue-800' },
+  disponivel: { texto: 'Disponível', classe: 'bg-emerald-100 text-emerald-800' },
+  avariado:   { texto: 'Avariado',   classe: 'bg-amber-100 text-amber-800' },
+  abatido:    { texto: 'Abatido',    classe: 'bg-slate-200 text-slate-700' },
+};
+
+const SITUACOES = {
+  ok:            { texto: 'Confere',            classe: 'bg-emerald-100 text-emerald-800', ajuda: 'O que declarou bate certo com o registo.' },
+  divergente:    { texto: 'Indicativo diferente', classe: 'bg-amber-100 text-amber-800',   ajuda: 'Declarou ter um rádio com outro número.' },
+  nao_registado: { texto: 'Sem registo',        classe: 'bg-red-100 text-red-800',         ajuda: 'Diz que tem rádio, mas não há registo de entrega.' },
+  nao_declarado: { texto: 'Não declarado',      classe: 'bg-purple-100 text-purple-800',   ajuda: 'Está-lhe entregue um rádio, mas respondeu que não tem.' },
+  sem_resposta:  { texto: 'Sem resposta',       classe: 'bg-slate-200 text-slate-700',     ajuda: 'Tem rádio entregue e não respondeu ao questionário.' },
+};
+
+function etiqueta(mapa, chave) {
+  const e = mapa[chave] || { texto: chave || '—', classe: 'bg-slate-100 text-slate-600' };
+  return `<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${e.classe}">${esc(e.texto)}</span>`;
+}
+
+// ─── Parque ────────────────────────────────────────────────
+
+async function carregarParque() {
+  const p = new URLSearchParams();
+  if (estado.filtros.q) p.set('q', estado.filtros.q);
+  if (estado.filtros.estado) p.set('estado', estado.filtros.estado);
+  if (estado.filtros.marca) p.set('marca', estado.filtros.marca);
+  estado.radios = await pedir('/radios?' + p.toString());
+  desenharParque();
+}
+
+function desenharParque() {
+  const podeEditar = estado.permissoes && estado.permissoes.canEdit;
+  const podeAdmin = estado.permissoes && estado.permissoes.canAdmin;
+  const corpo = document.getElementById('tabelaParque');
+
+  if (!estado.radios.length) {
+    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">
+      Nenhum rádio encontrado com estes filtros.</td></tr>`;
+    document.getElementById('rodapeParque').textContent = '';
+    return;
+  }
+
+  corpo.innerHTML = estado.radios.map(r => {
+    const entregue = r.matricula || r.nome_utilizador
+      ? `${esc(r.nome_utilizador || '—')}${r.matricula ? ` <span class="text-slate-400">· ${esc(r.matricula)}</span>` : ''}`
+      : '<span class="text-slate-300">—</span>';
+    const avaria = r.avaria_id
+      ? `<div class="text-[11px] text-amber-700 mt-0.5">${esc(r.tipo_avaria || 'avaria por classificar')}</div>` : '';
+    return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 font-bold text-slate-900">${esc(r.indicativo || '—')}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${r.num_serie ? esc(r.num_serie) : '<span class="text-slate-300">sem série</span>'}</td>
+      <td class="px-3 py-2">
+        <div class="text-slate-800">${esc(r.marca || '—')} <span class="text-slate-500">${esc(r.modelo || '')}</span></div>
+        ${r.alias_tei ? `<div class="text-[11px] text-slate-400">${esc(r.alias_tei)}</div>` : ''}
+      </td>
+      <td class="px-3 py-2">${etiqueta(ESTADOS, r.estado)}${avaria}</td>
+      <td class="px-3 py-2">${entregue}</td>
+      <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${r.data_entrega ? dataPt(r.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">
+        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${r.id}" title="Ver detalhe" aria-label="Ver detalhe do rádio ${esc(r.indicativo || r.num_serie || '')}">
+          <i data-lucide="eye" class="w-4 h-4"></i></button>
+        <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${r.id}" title="Entregar" ${podeEditar && r.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="user-plus" class="w-4 h-4"></i></button>
+        <button class="accao text-emerald-600 hover:bg-emerald-50" data-devolver="${r.id}" title="Devolver" ${podeEditar && r.atribuicao_id ? '' : 'disabled'}>
+          <i data-lucide="undo-2" class="w-4 h-4"></i></button>
+        <button class="accao text-amber-600 hover:bg-amber-50" data-avaria="${r.id}" title="Registar avaria" ${podeEditar && r.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="wrench" class="w-4 h-4"></i></button>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-abate="${r.id}" title="Abater" ${podeAdmin && r.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="archive" class="w-4 h-4"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rodapeParque').textContent =
+    `${estado.radios.length} ${estado.radios.length === 1 ? 'rádio' : 'rádios'}` +
+    (estado.filtros.q || estado.filtros.estado || estado.filtros.marca ? ' (filtrado)' : '');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function carregarEstatisticas() {
+  const e = await pedir('/estatisticas');
+  document.getElementById('kpiTotal').textContent = e.total;
+  document.getElementById('kpiAtribuidos').textContent = e.atribuidos;
+  document.getElementById('kpiDisponiveis').textContent = e.disponiveis;
+  document.getElementById('kpiAvariados').textContent = e.avariados;
+  document.getElementById('kpiAbatidos').textContent = e.abatidos;
+  document.getElementById('kpiSemSerie').textContent = e.sem_serie;
+
+  const sel = document.getElementById('filtroMarca');
+  const escolhida = sel.value;
+  sel.innerHTML = '<option value="">Todas</option>' + (e.marcas || [])
+    .filter(m => m.marca && m.marca !== '(sem marca)')
+    .map(m => `<option value="${esc(m.marca)}">${esc(m.marca)} (${m.total})</option>`).join('');
+  sel.value = escolhida;
+}
+
+// ─── Detalhe ───────────────────────────────────────────────
+
+function linhaCampo(rotulo, valor) {
+  return `<div>
+    <dt class="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">${esc(rotulo)}</dt>
+    <dd class="text-sm text-slate-800">${valor || '<span class="text-slate-300">—</span>'}</dd>
+  </div>`;
+}
+
+async function abrirDetalhe(id) {
+  const r = await pedir('/radios/' + id);
+  estado.radioAberto = r;
+
+  document.getElementById('painelTitulo').textContent = r.indicativo ? `Rádio ${r.indicativo}` : 'Rádio sem indicativo';
+  document.getElementById('painelSubtitulo').innerHTML =
+    `${esc(r.marca || '')} ${esc(r.modelo || '')} · ${r.num_serie ? esc(r.num_serie) : 'sem número de série'}`;
+
+  const atribuicoes = r.atribuicoes.length ? r.atribuicoes.map(a => `
+    <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
+      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.data_devolucao ? 'bg-slate-300' : 'bg-blue-500'}"></span>
+      <div class="text-sm">
+        <div class="font-semibold text-slate-800">${esc(a.nome_utilizador || 'sem nome')}
+          ${a.matricula ? `<span class="text-slate-400 font-normal">· ${esc(a.matricula)}</span>` : ''}</div>
+        <div class="text-xs text-slate-500">
+          ${dataPt(a.data_entrega)} → ${a.data_devolucao ? dataPt(a.data_devolucao) : '<span class="text-blue-600 font-semibold">ainda o tem</span>'}
+          ${a.guia ? ' · guia' : ''}
+        </div>
+        ${a.obs ? `<div class="text-xs text-slate-400 mt-0.5">${esc(a.obs)}</div>` : ''}
+      </div>
+    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Nunca foi entregue.</li>';
+
+  const avarias = r.avarias.length ? r.avarias.map(a => `
+    <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
+      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.estado === 'aberta' ? 'bg-amber-500' : 'bg-slate-300'}"></span>
+      <div class="text-sm flex-1">
+        <div class="font-semibold text-slate-800">${esc(a.tipo_avaria || 'por classificar')}
+          <span class="text-xs font-normal text-slate-400">${a.ordem === 'P' ? '· programação' : a.ordem === '*' ? '· física' : ''}</span>
+        </div>
+        <div class="text-xs text-slate-500">
+          ${a.estado === 'aberta' ? `aberta desde ${dataPt(a.data_registo)} · ${esc(a.localizacao || '—')}`
+                                  : `${a.estado === 'reparada' ? 'reparada' : 'irreparável'} em ${dataPt(a.data_reparacao)}`}
+        </div>
+      </div>
+      ${a.estado === 'aberta' && estado.permissoes.canEdit
+        ? `<button class="text-xs font-semibold text-emerald-700 hover:underline" data-reparar="${a.id}">Fechar</button>` : ''}
+    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Sem avarias registadas.</li>';
+
+  const sistema = r.sistema ? `
+    <dl class="grid grid-cols-2 gap-3">
+      ${linhaCampo('Alias', esc(r.sistema.alias))}
+      ${linhaCampo('ID de rádio', esc(r.sistema.radio_id))}
+      ${linhaCampo('Grupo de conversação', esc(r.sistema.talkgroup))}
+      ${linhaCampo('Perfil', esc(r.sistema.perfil_capacidades))}
+    </dl>`
+    : `<p class="text-sm text-slate-400">Este equipamento não aparece na exportação do sistema
+       ${r.num_serie ? '(cruzamento por número de série)' : '— sem número de série, não há por onde cruzar'}.</p>`;
+
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex items-center gap-2 mb-3">
+        ${etiqueta(ESTADOS, r.estado)}
+        ${estado.permissoes.canEdit ? '<button id="btnEditar" class="ml-auto text-xs font-semibold text-blue-600 hover:underline">Editar equipamento</button>' : ''}
+      </div>
+      <dl class="grid grid-cols-2 gap-3">
+        ${linhaCampo('Indicativo', esc(r.indicativo))}
+        ${linhaCampo('Nº de série', r.num_serie ? `<span class="font-mono text-xs">${esc(r.num_serie)}</span>` : '')}
+        ${linhaCampo('Marca / modelo', `${esc(r.marca || '')} ${esc(r.modelo || '')}`.trim())}
+        ${linhaCampo('Alias TETRA', esc(r.alias_tei))}
+        ${linhaCampo('ID de rádio', esc(r.radio_id_tei))}
+        ${linhaCampo('TIE', esc(r.tie))}
+      </dl>
+      ${r.obs ? `<p class="mt-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3">${esc(r.obs)}</p>` : ''}
+    </section>
+
+    ${r.abate ? `<section class="bg-slate-100 border border-slate-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Abatido em ${dataPt(r.abate.data_abate)}</h3>
+      <p class="text-sm text-slate-600">${esc(r.abate.motivo || 'sem motivo registado')}</p>
+      ${estado.permissoes.canAdmin ? '<button id="btnAnularAbate" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Anular abate</button>' : ''}
+    </section>` : ''}
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Entregas</h3>
+      <ul>${atribuicoes}</ul>
+    </section>
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Avarias</h3>
+      <ul>${avarias}</ul>
+    </section>
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">No sistema TETRA</h3>
+      ${sistema}
+    </section>`;
+
+  document.getElementById('painel').classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+function fecharPainel() {
+  document.getElementById('painel').classList.add('hidden');
+  estado.radioAberto = null;
+}
+
+// ─── Modais de formulário ──────────────────────────────────
+
+let submeterModal = null;
+
+function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalAjuda').textContent = ajuda || '';
+  document.getElementById('modalGravar').textContent = textoGravar || 'Gravar';
+  document.getElementById('modalForm').innerHTML = campos.map(c => {
+    const base = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+    const controlo = c.tipo === 'textarea'
+      ? `<textarea id="c_${c.nome}" name="${c.nome}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`
+      : c.tipo === 'select'
+        ? `<select id="c_${c.nome}" name="${c.nome}" class="${base}">${c.opcoes.map(o =>
+            `<option value="${esc(o.valor)}" ${o.valor === c.valor ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}</select>`
+        : `<input id="c_${c.nome}" name="${c.nome}" type="${c.tipo || 'text'}" value="${esc(c.valor || '')}"
+             ${c.lista ? `list="${c.lista}"` : ''} ${c.obrigatorio ? 'required' : ''}
+             placeholder="${esc(c.dica || '')}" class="${base}">`;
+    return `<div>
+      <label for="c_${c.nome}" class="block text-xs font-semibold text-slate-600 mb-1">${esc(c.rotulo)}</label>
+      ${controlo}
+      ${c.nota ? `<p class="text-[11px] text-slate-400 mt-1">${esc(c.nota)}</p>` : ''}
+    </div>`;
+  }).join('') + '<datalist id="listaPessoas"></datalist>';
+
+  submeterModal = gravar;
+  document.getElementById('modal').classList.remove('hidden');
+  const primeiro = document.querySelector('#modalForm input, #modalForm select, #modalForm textarea');
+  if (primeiro) primeiro.focus();
+}
+
+function fecharModal() {
+  document.getElementById('modal').classList.add('hidden');
+  submeterModal = null;
+}
+
+function dadosDoModal() {
+  const dados = {};
+  new FormData(document.getElementById('modalForm')).forEach((v, k) => { dados[k] = String(v).trim(); });
+  return dados;
+}
+
+/** Recarrega o que está à vista depois de uma alteração. */
+async function refrescar(idDetalhe) {
+  await Promise.all([carregarParque(), carregarEstatisticas()]);
+  estado.conferencia = null;             // fica por recarregar: só se lá voltarem
+  if (idDetalhe) await abrirDetalhe(idDetalhe);
+}
+
+function modalEntregar(id) {
+  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+  abrirModal({
+    titulo: `Entregar o rádio ${r.indicativo || ''}`.trim(),
+    ajuda: r.atribuicao_id ? `Está entregue a ${r.nome_utilizador || 'alguém'} — essa entrega é fechada nesta data.` : '',
+    campos: [
+      { nome: 'matricula', rotulo: 'Matrícula', tipo: 'text', lista: 'listaPessoas', dica: '138415' },
+      { nome: 'nome_utilizador', rotulo: 'Nome', tipo: 'text', dica: 'Nome de quem fica com o rádio' },
+      { nome: 'data_entrega', rotulo: 'Data de entrega', tipo: 'date', valor: hojeISO() },
+      { nome: 'guia', rotulo: 'Guia', tipo: 'text', dica: 'Referência da guia em papel, se houver' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Entregar',
+    gravar: async d => {
+      await enviar(`/radios/${id}/atribuir`, d);
+      toast('Entrega registada.');
+      await refrescar(estado.radioAberto ? id : null);
+    },
+  });
+  carregarPessoas();
+}
+
+async function carregarPessoas() {
+  try {
+    const pessoas = await pedir('/utilizadores');
+    const lista = document.getElementById('listaPessoas');
+    if (lista) lista.innerHTML = pessoas.map(p =>
+      `<option value="${esc(p.matricula)}">${esc(p.nome || '')}</option>`).join('');
+  } catch (e) { /* o autocompletar é um extra: sem ele o campo continua a funcionar */ }
+}
+
+function modalDevolver(id) {
+  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+  abrirModal({
+    titulo: `Devolver o rádio ${r.indicativo || ''}`.trim(),
+    ajuda: r.nome_utilizador ? `Entregue a ${r.nome_utilizador}.` : '',
+    campos: [
+      { nome: 'data_devolucao', rotulo: 'Data de devolução', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', dica: 'Estado em que veio, por exemplo' },
+    ],
+    textoGravar: 'Devolver',
+    gravar: async d => {
+      await enviar(`/radios/${id}/devolver`, d);
+      toast('Devolução registada.');
+      await refrescar(estado.radioAberto ? id : null);
+    },
+  });
+}
+
+function modalAvaria(id) {
+  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+  abrirModal({
+    titulo: `Registar avaria no rádio ${r.indicativo || ''}`.trim(),
+    campos: [
+      { nome: 'tipo_avaria', rotulo: 'Avaria', tipo: 'text', obrigatorio: true, dica: 'Prog., n/liga, teclado, ecrã partido…' },
+      { nome: 'ordem', rotulo: 'Tipo', tipo: 'select', valor: 'P', opcoes: [
+        { valor: 'P', texto: 'P — programação (resolve-se no posto)' },
+        { valor: '*', texto: '* — física (vai para reparação)' },
+      ] },
+      { nome: 'localizacao', rotulo: 'Onde está', tipo: 'select', valor: 'Aguarda Reparação', opcoes: [
+        { valor: 'Aguarda Reparação', texto: 'Aguarda reparação' },
+        { valor: 'No armazém', texto: 'No armazém' },
+        { valor: 'No atendimento', texto: 'No atendimento' },
+      ] },
+      { nome: 'data_registo', rotulo: 'Data', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Registar avaria',
+    gravar: async d => {
+      await enviar(`/radios/${id}/avarias`, d);
+      toast('Avaria registada.');
+      await refrescar(estado.radioAberto ? id : null);
+    },
+  });
+}
+
+function modalReparar(avariaId) {
+  const id = estado.radioAberto ? estado.radioAberto.id : null;
+  abrirModal({
+    titulo: 'Fechar a avaria',
+    campos: [
+      { nome: 'estado', rotulo: 'Desfecho', tipo: 'select', valor: 'reparada', opcoes: [
+        { valor: 'reparada', texto: 'Reparada — volta ao parque' },
+        { valor: 'irreparavel', texto: 'Irreparável — fica para abate' },
+      ] },
+      { nome: 'data_reparacao', rotulo: 'Data', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Fechar',
+    gravar: async d => {
+      await enviar(`/avarias/${avariaId}/reparar`, d);
+      toast('Avaria fechada.');
+      await refrescar(id);
+    },
+  });
+}
+
+function modalAbate(id) {
+  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+  abrirModal({
+    titulo: `Abater o rádio ${r.indicativo || ''}`.trim(),
+    ajuda: 'O rádio sai do parque activo mas não é apagado: o histórico fica.',
+    campos: [
+      { nome: 'data_abate', rotulo: 'Data do abate', tipo: 'date', valor: hojeISO() },
+      { nome: 'motivo', rotulo: 'Motivo', tipo: 'text', obrigatorio: true, dica: 'Irreparável, extraviado, fim de vida…' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Abater',
+    gravar: async d => {
+      await enviar(`/radios/${id}/abate`, d);
+      toast('Rádio abatido.');
+      await refrescar(estado.radioAberto ? id : null);
+    },
+  });
+}
+
+function modalEquipamento(r) {
+  const novo = !r;
+  r = r || {};
+  abrirModal({
+    titulo: novo ? 'Novo rádio' : `Editar o rádio ${r.indicativo || ''}`.trim(),
+    ajuda: novo ? 'Basta o número de série ou o indicativo — nem todo o parque tem os dois.' : '',
+    campos: [
+      { nome: 'indicativo', rotulo: 'Indicativo', tipo: 'text', valor: r.indicativo, dica: '304' },
+      { nome: 'num_serie', rotulo: 'Nº de série', tipo: 'text', valor: r.num_serie },
+      { nome: 'marca', rotulo: 'Marca', tipo: 'text', valor: r.marca, dica: 'Sepura / Motorola' },
+      { nome: 'modelo', rotulo: 'Modelo', tipo: 'text', valor: r.modelo, dica: 'SC2020 / MXP600' },
+      { nome: 'alias_tei', rotulo: 'Alias TETRA', tipo: 'text', valor: r.alias_tei, dica: 'LSB PMG304 LX' },
+      { nome: 'radio_id_tei', rotulo: 'ID de rádio', tipo: 'text', valor: r.radio_id_tei },
+      { nome: 'tie', rotulo: 'TIE', tipo: 'text', valor: r.tie, nota: 'Só os Motorola o têm.' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: r.obs },
+    ],
+    gravar: async d => {
+      if (novo) {
+        const criado = await enviar('/radios', d);
+        toast('Rádio criado.');
+        await refrescar();
+        await abrirDetalhe(criado.id);
+      } else {
+        await enviar('/radios/' + r.id, d, 'PUT');
+        toast('Alterações gravadas.');
+        await refrescar(r.id);
+      }
+    },
+  });
+}
+
+// ─── Conferência ───────────────────────────────────────────
+
+async function carregarConferencia() {
+  if (!estado.conferencia) estado.conferencia = await pedir('/conferencia');
+  const { resumo, linhas } = estado.conferencia;
+
+  document.getElementById('chipsConferencia').innerHTML =
+    [['', 'Tudo', Object.values(resumo).reduce((a, b) => a + b, 0)]]
+      .concat(Object.keys(SITUACOES).map(k => [k, SITUACOES[k].texto, resumo[k] || 0]))
+      .map(([chave, texto, n]) => `
+        <button data-situacao="${chave}" title="${chave ? esc(SITUACOES[chave].ajuda) : 'Todas as pessoas conferidas'}"
+          class="px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+            estado.filtroConferencia === chave ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}">
+          ${esc(texto)} <span class="opacity-70">${n}</span>
+        </button>`).join('');
+
+  const visiveis = estado.filtroConferencia
+    ? linhas.filter(l => l.situacao === estado.filtroConferencia) : linhas;
+
+  document.getElementById('tabelaConferencia').innerHTML = visiveis.length ? visiveis.map(l => `
+    <tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${esc(l.matricula)}</td>
+      <td class="px-3 py-2 text-slate-800">${esc(l.nome || '—')}</td>
+      <td class="px-3 py-2 text-slate-500 whitespace-nowrap">${l.data_resposta ? dataPt(l.data_resposta) : '<span class="text-slate-300">não respondeu</span>'}</td>
+      <td class="px-3 py-2">${l.tem_radio === 'SIM'
+          ? `<span class="font-bold text-slate-800">${esc(l.indicativo_declarado || 'sim, sem número')}</span>`
+          : l.tem_radio === 'NAO' ? '<span class="text-slate-500">não tem</span>' : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2">${l.indicativos_registados
+          ? `<span class="font-bold text-slate-800">${esc(l.indicativos_registados)}</span>`
+          : '<span class="text-slate-300">nada registado</span>'}</td>
+      <td class="px-3 py-2 text-slate-600">${l.baterias === null || l.baterias === undefined ? '—' : esc(l.baterias)}</td>
+      <td class="px-3 py-2">${etiqueta(SITUACOES, l.situacao)}</td>
+    </tr>`).join('')
+    : `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">Nada nesta situação.</td></tr>`;
+
+  document.getElementById('rodapeConferencia').textContent =
+    `${visiveis.length} de ${linhas.length} pessoas · ${resumo.ok || 0} conferem`;
+
+  const porResolver = (resumo.divergente || 0) + (resumo.nao_registado || 0) + (resumo.nao_declarado || 0);
+  const pastilha = document.getElementById('pastilhaConferencia');
+  pastilha.textContent = porResolver;
+  pastilha.classList.toggle('hidden', porResolver === 0);
+}
+
+// ─── Sistema TETRA ─────────────────────────────────────────
+
+async function carregarSistema(q) {
+  const linhas = await pedir('/sistema' + (q ? '?q=' + encodeURIComponent(q) : ''));
+  const seriesDoParque = new Set(estado.radios.filter(r => r.num_serie).map(r => r.num_serie));
+  document.getElementById('tabelaSistema').innerHTML = linhas.length ? linhas.map(s => `
+    <tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 text-slate-800">${esc(s.alias || '—')}</td>
+      <td class="px-3 py-2 font-bold text-slate-900">${esc(s.indicativo || '—')}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${esc(s.num_serie || '—')}</td>
+      <td class="px-3 py-2 text-slate-600">${esc(s.radio_id || '—')}</td>
+      <td class="px-3 py-2 text-slate-600">${esc(s.talkgroup || '—')}</td>
+      <td class="px-3 py-2 text-slate-500 text-xs">${esc(s.perfil_capacidades || '—')}</td>
+      <td class="px-3 py-2">${seriesDoParque.has(s.num_serie)
+        ? '<span class="text-emerald-700 text-xs font-bold">sim</span>'
+        : '<span class="text-slate-400 text-xs">não consta</span>'}</td>
+    </tr>`).join('')
+    : `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">Nada encontrado.</td></tr>`;
+  document.getElementById('rodapeSistema').textContent =
+    `${linhas.length} equipamentos no sistema${linhas.length === 1000 ? ' (mostra os primeiros 1000)' : ''}`;
+}
+
+// ─── Exportação ────────────────────────────────────────────
+
+/**
+ * CSV com ponto e vírgula e BOM: é o que o Excel em português abre sem pedir
+ * nada. Com vírgula, o Excel PT junta tudo numa coluna só.
+ */
+function exportarCSV() {
+  const colunas = ['indicativo', 'num_serie', 'marca', 'modelo', 'alias_tei', 'radio_id_tei',
+                   'estado', 'matricula', 'nome_utilizador', 'data_entrega', 'guia', 'tipo_avaria', 'obs'];
+  const celula = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v).replace(/"/g, '""');
+    return /[";\n]/.test(s) ? `"${s}"` : s;
+  };
+  const linhas = [colunas.join(';')].concat(estado.radios.map(r =>
+    colunas.map(c => celula(c === 'data_entrega' && r[c] ? dataPt(r[c]) : r[c])).join(';')));
+  const url = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `radios_${hojeISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Ligações ──────────────────────────────────────────────
+
+function mudarAba(nome) {
+  estado.aba = nome;
+  for (const b of document.querySelectorAll('.aba')) {
+    const activa = b.dataset.aba === nome;
+    b.className = `aba px-4 py-2.5 text-sm font-semibold border-b-2 ${
+      activa ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`;
+    b.setAttribute('aria-selected', activa ? 'true' : 'false');
+  }
+  document.getElementById('abaParque').classList.toggle('hidden', nome !== 'parque');
+  document.getElementById('abaConferencia').classList.toggle('hidden', nome !== 'conferencia');
+  document.getElementById('abaSistema').classList.toggle('hidden', nome !== 'sistema');
+  if (nome === 'conferencia') carregarConferencia().catch(e => toast(e.message, 'erro'));
+  if (nome === 'sistema') carregarSistema(document.getElementById('procuraSistema').value).catch(e => toast(e.message, 'erro'));
+}
+
+let temporizadorProcura = null;
+function procuraAdiada(fn) {
+  clearTimeout(temporizadorProcura);
+  temporizadorProcura = setTimeout(fn, 250);
+}
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-abate],[data-reparar],[data-situacao],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnAnularAbate,#btnNovo,#btnExportar,.aba');
+  if (!alvo) return;
+  const d = alvo.dataset;
+  try {
+    if (alvo.matches('[data-fechar]')) return fecharPainel();
+    if (alvo.matches('[data-fechar-modal]')) return fecharModal();
+    if (alvo.matches('.aba')) return mudarAba(d.aba);
+    if (alvo.id === 'btnExportar') return exportarCSV();
+    if (alvo.id === 'btnNovo') return modalEquipamento(null);
+    if (alvo.id === 'btnEditar') return modalEquipamento(estado.radioAberto);
+    if (alvo.id === 'btnAnularAbate') {
+      if (!confirm('Anular o abate e devolver o rádio ao parque?')) return;
+      await pedir(`/radios/${estado.radioAberto.id}/abate`, { method: 'DELETE' });
+      toast('Abate anulado.');
+      return refrescar(estado.radioAberto.id);
+    }
+    if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
+    if (d.entregar) return modalEntregar(Number(d.entregar));
+    if (d.devolver) return modalDevolver(Number(d.devolver));
+    if (d.avaria) return modalAvaria(Number(d.avaria));
+    if (d.abate) return modalAbate(Number(d.abate));
+    if (d.reparar) return modalReparar(Number(d.reparar));
+    if (d.situacao !== undefined && alvo.closest('#chipsConferencia')) {
+      estado.filtroConferencia = estado.filtroConferencia === d.situacao ? '' : d.situacao;
+      return carregarConferencia();
+    }
+    if (d.estado !== undefined && alvo.classList.contains('cartao')) {
+      estado.filtros.estado = d.estado;
+      document.getElementById('filtroEstado').value = d.estado;
+      mudarAba('parque');
+      return carregarParque();
+    }
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+});
+
+document.getElementById('modalForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!submeterModal) return;
+  const botao = document.getElementById('modalGravar');
+  botao.disabled = true;
+  try {
+    await submeterModal(dadosDoModal());
+    fecharModal();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+document.getElementById('procura').addEventListener('input', ev => {
+  estado.filtros.q = ev.target.value.trim();
+  procuraAdiada(() => carregarParque().catch(e => toast(e.message, 'erro')));
+});
+document.getElementById('filtroEstado').addEventListener('change', ev => {
+  estado.filtros.estado = ev.target.value;
+  carregarParque().catch(e => toast(e.message, 'erro'));
+});
+document.getElementById('filtroMarca').addEventListener('change', ev => {
+  estado.filtros.marca = ev.target.value;
+  carregarParque().catch(e => toast(e.message, 'erro'));
+});
+document.getElementById('procuraSistema').addEventListener('input', ev => {
+  procuraAdiada(() => carregarSistema(ev.target.value.trim()).catch(e => toast(e.message, 'erro')));
+});
+
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (!document.getElementById('modal').classList.contains('hidden')) return fecharModal();
+  if (!document.getElementById('painel').classList.contains('hidden')) return fecharPainel();
+});
+
+// ─── Arranque ──────────────────────────────────────────────
+
+async function arrancar() {
+  try {
+    estado.permissoes = await pedir('/permissoes');
+  } catch (err) {
+    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+  }
+  if (!estado.permissoes.canView) {
+    return mostrarErro('Acesso reservado à Gestão de Rádios.',
+      'Pede para te adicionarem ao grupo "Radios" (ou "Radios-Consulta" para consulta).');
+  }
+
+  document.getElementById('nomeUtilizador').textContent =
+    estado.permissoes.nome || estado.permissoes.username || '—';
+  document.getElementById('etiquetaAcesso').textContent =
+    estado.permissoes.canAdmin ? 'Administração' : estado.permissoes.canEdit ? 'Escrita' : 'Só consulta';
+  if (estado.permissoes.canEdit) document.getElementById('btnNovo').classList.remove('hidden');
+
+  try {
+    await Promise.all([carregarEstatisticas(), carregarParque()]);
+    // A pastilha do separador tem de estar certa antes de lá irem.
+    await carregarConferencia();
+    mudarAba('parque');
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function mostrarErro(titulo, detalhe) {
+  document.getElementById('erroTitulo').textContent = titulo;
+  document.getElementById('erroDetalhe').textContent = detalhe || '';
+  document.getElementById('ecraErro').classList.remove('hidden');
+}
+
+arrancar();
+</script>
+</body>
+</html>

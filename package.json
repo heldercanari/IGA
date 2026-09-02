@@ -1,0 +1,21 @@
+{
+  "name": "radios-pm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gestão de Rádios da Polícia Municipal de Lisboa — módulo destacado da intranet para desenvolvimento isolado",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "scripts": {
+    "harness": "node _harness-radios.js",
+    "importar": "node scripts/importar_xlsx.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "mssql": "^11.0.1",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  }
+}
