@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão de Rádios</title>
+    <title>Inventário e Gestão de Ativos</title>
     <link rel="icon" type="image/png" href="/radios/favicon.png">
     <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
          aplica quando corre. Adiado para depois do parse, o browser chega a pintar
@@ -66,8 +66,8 @@
         <div class="flex items-center gap-4">
             <img src="/radios/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
             <div>
-                <h1 class="text-xl font-extrabold text-slate-900">Gestão de Rádios</h1>
-                <p class="text-slate-500 text-xs">Parque, entregas, avarias e conferência</p>
+                <h1 class="text-xl font-extrabold text-slate-900">Inventário e Gestão de Ativos</h1>
+                <p class="text-slate-500 text-xs">Registo, distribuição e controlo de equipamentos · NSIC</p>
             </div>
         </div>
         <div class="text-right flex flex-col items-end gap-1">
@@ -938,7 +938,7 @@ async function arrancar() {
     return mostrarErro('Não foi possível confirmar as permissões.', err.message);
   }
   if (!estado.permissoes.canView) {
-    return mostrarErro('Acesso reservado à Gestão de Rádios.',
+    return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
       'Pede para te adicionarem ao grupo "Radios" (ou "Radios-Consulta" para consulta).');
   }
 

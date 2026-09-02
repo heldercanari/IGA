@@ -157,7 +157,7 @@ function negar(req, res, status, message) {
     });
   }
   const titulo = status === 401 ? 'Não autenticado' : 'Acesso reservado';
-  res.status(status).type('html').send(`<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${titulo} · Rádios</title>
+  res.status(status).type('html').send(`<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${titulo} · Inventário e Gestão de Ativos</title>
 <style>body{font-family:'Hanken Grotesk',system-ui,Arial,sans-serif;background:#f1f5f9;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.box{background:#fff;border:1px solid #e2e8f0;padding:40px 48px;border-radius:16px;max-width:460px;text-align:center;box-shadow:0 20px 40px rgba(15,23,42,.08)}h1{font-size:22px;margin:0 0 12px;color:#0f172a}p{color:#64748b;line-height:1.55;margin:0 0 18px}a{color:#2563eb;text-decoration:none;font-weight:700}</style></head>
 <body><div class="box"><h1>${titulo}</h1><p>${message}</p><a href="/index2.html">← Voltar à Intranet</a></div></body></html>`);
 }
@@ -181,7 +181,7 @@ async function exigirAcesso(req, res, next) {
   if (!p) return;
   if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
   if (!p.canView) {
-    return negar(req, res, 403, 'Acesso reservado à Gestão de Rádios. Pede para te adicionarem ao grupo "Radios" (ou "Radios-Consulta" para consulta).');
+    return negar(req, res, 403, 'Acesso reservado ao Inventário e Gestão de Ativos. Pede para te adicionarem ao grupo "Radios" (ou "Radios-Consulta" para consulta).');
   }
   next();
 }
