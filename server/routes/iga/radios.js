@@ -210,6 +210,10 @@ router.get('/conferencia', async (req, res) => {
       return acc;
     }, {});
 
+    // `?so=resumo` devolve só as contagens. É o que a página de entrada precisa,
+    // e evita mandar-lhe as 420 linhas para mostrar um número.
+    if (limpar(req.query.so) === 'resumo') return res.json({ resumo, total: linhas.length });
+
     const situacao = limpar(req.query.situacao);
     res.json({
       resumo,

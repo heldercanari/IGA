@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventário e Gestão de Ativos</title>
+    <link rel="icon" type="image/png" href="/iga/favicon.png">
+    <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
+         aplica quando corre. Adiado para depois do parse, o browser chega a pintar
+         a página em cru. O ficheiro é local, não vem de CDN nenhum. -->
+    <script src="/iga/tailwind.global.js"></script>
+    <script src="/iga/lucide.min.js" defer></script>
+    <style>
+        .hidden { display: none; }
+        body, a, button { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { transition-duration: .01ms !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <img src="/iga/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+    </div>
+</div>
+
+<div class="max-w-[1100px] mx-auto p-6">
+
+    <header class="mb-8 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center gap-4">
+            <img src="/iga/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900">Inventário e Gestão de Ativos
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-400">IGA</span>
+                </h1>
+                <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
+            </div>
+        </div>
+        <div class="text-right flex flex-col items-end gap-1">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                Utilizador: <span id="nomeUtilizador">a carregar…</span>
+            </span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+        </div>
+    </header>
+
+    <main>
+        <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Equipamento</h2>
+        <!-- Um cartão por tipo. Ao acrescentar um equipamento novo, entra aqui e
+             na barra de navegação das outras páginas — são os dois sítios onde a
+             lista de tipos está escrita à mão. -->
+        <div id="cartoes" class="grid gap-4 md:grid-cols-2"></div>
+
+        <p id="rodape" class="text-xs text-slate-400 mt-8"></p>
+    </main>
+</div>
+
+<script>
+'use strict';
+
+const API_MODULO = '/api/iga';
+
+/**
+ * Os tipos de equipamento da aplicação.
+ *
+ * É esta lista que a página de entrada mostra. Um tipo novo entra aqui com o seu
+ * endpoint e a sua página — e como as páginas são independentes umas das outras
+ * (ver o CLAUDE.md), entra também na barra de navegação de cada uma delas.
+ */
+const TIPOS = [
+  {
+    chave: 'radios',
+    nome: 'Rádios',
+    descricao: 'TETRA · Sepura e Motorola',
+    icone: 'radio-tower',
+    pagina: '/radios.html',
+    api: '/radios',
+  },
+  {
+    chave: 'telemoveis',
+    nome: 'Telemóveis',
+    descricao: 'Motorola moto g6 Play',
+    icone: 'smartphone',
+    pagina: '/telemoveis.html',
+    api: '/telemoveis',
+  },
+];
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function pedir(caminho) {
+  const r = await fetch(API_MODULO + caminho, { headers: { 'Accept': 'application/json' } });
+  let corpo = null;
+  try { corpo = await r.json(); } catch (e) { /* resposta sem JSON */ }
+  if (!r.ok) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+  return corpo;
+}
+
+function mostrarErro(titulo, detalhe) {
+  document.getElementById('erroTitulo').textContent = titulo;
+  document.getElementById('erroDetalhe').textContent = detalhe || '';
+  document.getElementById('ecraErro').classList.remove('hidden');
+}
+
+/** Um número com o seu rótulo, para o corpo do cartão. */
+function contagem(rotulo, valor, cor) {
+  return `<div>
+    <p class="text-lg font-extrabold ${cor || 'text-slate-800'}">${valor === undefined || valor === null ? '—' : esc(valor)}</p>
+    <p class="text-[11px] text-slate-500">${esc(rotulo)}</p>
+  </div>`;
+}
+
+/**
+ * O cartão de um tipo. As contagens são um extra: se a API desse tipo falhar —
+ * a base dos telemóveis é outra e pode estar em baixo sozinha — o cartão aparece
+ * na mesma, com o aviso, porque o que ele serve é abrir a página.
+ */
+function cartao(tipo, e, aviso) {
+  return `<a href="${tipo.pagina}"
+     class="block bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-blue-400 hover:shadow-md transition group">
+    <div class="flex items-start justify-between gap-3 mb-4">
+      <div class="flex items-center gap-3">
+        <span class="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-blue-50 group-hover:text-blue-600 transition">
+          <i data-lucide="${tipo.icone}" class="w-5 h-5"></i>
+        </span>
+        <div>
+          <h3 class="font-extrabold text-slate-900">${esc(tipo.nome)}</h3>
+          <p class="text-xs text-slate-500">${esc(tipo.descricao)}</p>
+        </div>
+      </div>
+      <span class="text-3xl font-extrabold text-slate-900">${e ? esc(e.total) : '—'}</span>
+    </div>
+
+    <div class="grid grid-cols-4 gap-2 pt-4 border-t border-slate-100">
+      ${contagem('entregues', e && e.atribuidos, 'text-blue-700')}
+      ${contagem('disponíveis', e && e.disponiveis, 'text-emerald-700')}
+      ${contagem('avariados', e && e.avariados, 'text-amber-700')}
+      ${contagem('abatidos', e && e.abatidos, 'text-slate-600')}
+    </div>
+
+    ${aviso ? `<p class="mt-4 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">${esc(aviso)}</p>` : ''}
+  </a>`;
+}
+
+async function arrancar() {
+  let permissoes;
+  try {
+    permissoes = await pedir('/permissoes');
+  } catch (err) {
+    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+  }
+  if (!permissoes.canView) {
+    return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
+      'Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
+  }
+
+  document.getElementById('nomeUtilizador').textContent = permissoes.nome || permissoes.username || '—';
+  document.getElementById('etiquetaAcesso').textContent =
+    permissoes.canAdmin ? 'Administração' : permissoes.canEdit ? 'Escrita' : 'Só consulta';
+
+  // Cada tipo por si: um que falhe não pode levar os outros atrás. As
+  // divergências da conferência NÃO aparecem aqui de propósito — a entrada só
+  // conta o parque; o trabalho por fazer vive na aba Conferência da página dos
+  // rádios, que é onde se resolve.
+  const cartoes = await Promise.all(TIPOS.map(async tipo => {
+    try {
+      const e = await pedir(tipo.api + '/estatisticas');
+      return cartao(tipo, e);
+    } catch (err) {
+      return cartao(tipo, null, `Não foi possível ler as contagens: ${err.message}`);
+    }
+  }));
+
+  document.getElementById('cartoes').innerHTML = cartoes.join('');
+  document.getElementById('rodape').textContent =
+    `${TIPOS.length} tipos de equipamento · cada um com a sua página`;
+  if (window.lucide) lucide.createIcons();
+}
+
+arrancar();
+</script>
+</body>
+</html>

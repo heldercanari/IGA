@@ -26,8 +26,11 @@ const { exigirAcesso } = require('./server/routes/iga/permissoes');
 const ATOR = process.env.ATOR || 'helder.canarias';
 const PORTA = parseInt(process.env.HARNESS_PORT || '3943', 10);
 
-/** As páginas do módulo, todas atrás do gate de VER. */
-const PAGINAS = ['radios', 'telemoveis'];
+/**
+ * As páginas do módulo, todas atrás do gate de VER. A primeira é a porta de
+ * entrada — é para lá que a raiz reencaminha, e é o link que se dá às pessoas.
+ */
+const PAGINAS = ['iga', 'radios', 'telemoveis'];
 
 const app = express();
 app.use(express.json());

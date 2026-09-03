@@ -119,8 +119,13 @@ na folha (há uma).
 npm run harness
 ```
 
+- **Entrada** → <http://localhost:3943/iga.html> (a raiz reencaminha para aqui)
 - Rádios → <http://localhost:3943/radios.html>
 - Telemóveis → <http://localhost:3943/telemoveis.html>
+
+A entrada é a página a dar às pessoas e a pôr no menu da intranet: mostra um cartão por
+equipamento com as contagens, e abre a página respectiva. O cabeçalho das páginas de
+equipamento traz de volta a ela.
 
 O harness serve `public/` e monta o router com um utilizador injectado, no lugar do SSPI.
 `ATOR` escolhe quem se está a fingir:
@@ -201,10 +206,14 @@ Cada tipo é uma página e um router próprios. Para juntar, por exemplo, comput
    `npm run` no `package.json`.
 4. **Página** — `public/computadores.html`. O ponto de partida é o `telemoveis.html`, que é o
    mais simples dos dois.
-5. ⚠️ **A navegação entre páginas muda em TODAS as páginas** — a lista de ligações no topo
+5. **Cartão na página de entrada** — uma entrada em `TIPOS`, no `public/iga.html`: nome,
+   descrição, ícone, página e caminho da API. É o que põe o equipamento à vista de quem
+   chega.
+6. ⚠️ **A navegação entre páginas muda em TODAS as páginas** — a lista de ligações no topo
    está escrita em cada uma. É o preço de as páginas serem independentes, e é aqui que se
-   costuma dar por isso tarde.
-6. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
+   costuma dar por isso tarde. Com a entrada, são **dois** sítios onde a lista de tipos está
+   à mão: o `TIPOS` do `iga.html` e o `<nav>` de cada página.
+7. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
    entra no `server/index.js` de lá, gated por `exigirAcesso`.
 
 Os grupos de acesso **não mudam**: são do módulo, valem para todos os tipos.

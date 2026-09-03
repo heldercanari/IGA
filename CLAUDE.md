@@ -132,8 +132,16 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
   ecrã, e o próximo equipamento será outra página. Foi decidido assim com o custo à vista —
   **não "arrumes" isto para um ficheiro comum** por parecer duplicação; é uma escolha, não um
   descuido. Se algum dia for para mudar, é conversa a ter, não uma refactorização de passagem.
-- ⚠️ **A navegação do topo está escrita em cada página.** Ao acrescentar um tipo, a lista de
-  ligações muda em TODAS — é o primeiro sítio onde a duplicação morde.
+- **`public/iga.html` é a porta de entrada** — um cartão por equipamento, com as contagens, e
+  é para lá que a raiz reencaminha. Não tem lógica de inventário nenhuma: só lê os
+  `/estatisticas` de cada tipo e abre a página respectiva. O cabeçalho das outras páginas traz
+  de volta a ela.
+- ⚠️ **A lista de tipos está escrita à mão em dois sítios**: o `TIPOS` do `iga.html` e o
+  `<nav>` do topo de cada página de equipamento. Ao acrescentar um tipo mudam os dois — é o
+  primeiro sítio onde a duplicação morde.
+- Os cartões da entrada **toleram uma API em baixo**: cada tipo é lido por si, e o que falha
+  aparece com o aviso em vez de levar a página atrás. A base dos telemóveis é outra e pode
+  estar em baixo sozinha.
 - O que **é** partilhado, e continua a sê-lo: o servidor (`server/routes/iga/`, um router
   por tipo montado no `index.js`), as permissões, e os assets em `public/iga/`.
 - O passo a passo para juntar um tipo novo está no README, secção *Acrescentar um tipo de
