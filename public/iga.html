@@ -50,9 +50,10 @@
 
     <main>
         <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Equipamento</h2>
-        <!-- Um cartão por tipo. Ao acrescentar um equipamento novo, entra aqui e
-             na barra de navegação das outras páginas — são os dois sítios onde a
-             lista de tipos está escrita à mão. -->
+        <!-- Um cartão por tipo. Esta é a ÚNICA lista de tipos escrita à mão: as
+             páginas de equipamento não têm navegação entre tipos, e toda a
+             passagem de um para outro é por aqui. Um equipamento novo entra no
+             `TIPOS` abaixo e mais nada. -->
         <div id="cartoes" class="grid gap-4 md:grid-cols-2"></div>
 
         <p id="rodape" class="text-xs text-slate-400 mt-8"></p>
@@ -67,9 +68,10 @@ const API_MODULO = '/api/iga';
 /**
  * Os tipos de equipamento da aplicação.
  *
- * É esta lista que a página de entrada mostra. Um tipo novo entra aqui com o seu
- * endpoint e a sua página — e como as páginas são independentes umas das outras
- * (ver o CLAUDE.md), entra também na barra de navegação de cada uma delas.
+ * É esta lista que a página de entrada mostra, e é o único sítio onde vive: as
+ * páginas de equipamento não têm navegação entre tipos (cada uma é dedicada ao
+ * seu), portanto um tipo novo entra aqui com o seu endpoint e a sua página, e
+ * mais nada.
  */
 const TIPOS = [
   {

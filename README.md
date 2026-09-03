@@ -207,13 +207,10 @@ Cada tipo é uma página e um router próprios. Para juntar, por exemplo, comput
 4. **Página** — `public/computadores.html`. O ponto de partida é o `telemoveis.html`, que é o
    mais simples dos dois.
 5. **Cartão na página de entrada** — uma entrada em `TIPOS`, no `public/iga.html`: nome,
-   descrição, ícone, página e caminho da API. É o que põe o equipamento à vista de quem
-   chega.
-6. ⚠️ **A navegação entre páginas muda em TODAS as páginas** — a lista de ligações no topo
-   está escrita em cada uma. É o preço de as páginas serem independentes, e é aqui que se
-   costuma dar por isso tarde. Com a entrada, são **dois** sítios onde a lista de tipos está
-   à mão: o `TIPOS` do `iga.html` e o `<nav>` de cada página.
-7. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
+   descrição, ícone, página e caminho da API. É o único sítio onde a lista de tipos está
+   escrita à mão: as páginas de equipamento não têm barra de navegação entre tipos (cada uma
+   é dedicada ao seu), e a navegação faz-se toda pela entrada.
+6. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
    entra no `server/index.js` de lá, gated por `exigirAcesso`.
 
 Os grupos de acesso **não mudam**: são do módulo, valem para todos os tipos.

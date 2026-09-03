@@ -136,9 +136,11 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
   é para lá que a raiz reencaminha. Não tem lógica de inventário nenhuma: só lê os
   `/estatisticas` de cada tipo e abre a página respectiva. O cabeçalho das outras páginas traz
   de volta a ela.
-- ⚠️ **A lista de tipos está escrita à mão em dois sítios**: o `TIPOS` do `iga.html` e o
-  `<nav>` do topo de cada página de equipamento. Ao acrescentar um tipo mudam os dois — é o
-  primeiro sítio onde a duplicação morde.
+- **As páginas de equipamento NÃO têm barra de navegação entre tipos.** Estando na página dos
+  rádios não se vê o botão dos telemóveis, e vice-versa — cada página é dedicada ao seu tipo.
+  A navegação entre tipos é sempre pela entrada: cabeçalho → `iga.html` → outro cartão. Por
+  isso **a lista de tipos vive num só sítio**, o `TIPOS` do `iga.html`; não a espalhes pelas
+  páginas com um `<nav>` de atalhos — foi tirado de propósito.
 - Os cartões da entrada **toleram uma API em baixo**: cada tipo é lido por si, e o que falha
   aparece com o aviso em vez de levar a página atrás. A base dos telemóveis é outra e pode
   estar em baixo sozinha.
