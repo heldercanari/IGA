@@ -81,7 +81,7 @@
     <!-- Cartões de contagem -->
     <section aria-label="Resumo do parque" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <button type="button" data-estado="" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
-            <p class="text-xs text-slate-500 font-medium">Parque total</p>
+            <p id="kpiTotalRotulo" class="text-xs text-slate-500 font-medium">Rádios no parque</p>
             <p id="kpiTotal" class="text-2xl font-extrabold text-slate-900">—</p>
         </button>
         <button type="button" data-estado="atribuido" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
@@ -101,19 +101,20 @@
             <p id="kpiAbatidos" class="text-2xl font-extrabold text-slate-600">—</p>
         </button>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p class="text-xs text-slate-500 font-medium">Sem nº de série</p>
+            <p id="kpiSemSerieRotulo" class="text-xs text-slate-500 font-medium">Sem nº de série</p>
             <p id="kpiSemSerie" class="text-2xl font-extrabold text-slate-600">—</p>
             <p class="text-[11px] text-slate-400 mt-0.5">de origem, não é erro</p>
         </div>
     </section>
 
     <!-- Separadores -->
-    <nav class="flex gap-1 mb-4 border-b border-slate-200" role="tablist">
-        <button role="tab" data-aba="parque" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-700">Parque</button>
-        <button role="tab" data-aba="conferencia" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+    <nav class="flex gap-1 mb-4 border-b border-slate-200 overflow-x-auto" role="tablist">
+        <button role="tab" data-aba="parque" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-700 whitespace-nowrap">Rádios</button>
+        <button role="tab" data-aba="telemoveis" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Telemóveis</button>
+        <button role="tab" data-aba="conferencia" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">
             Conferência <span id="pastilhaConferencia" class="ml-1 text-[11px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full hidden"></span>
         </button>
-        <button role="tab" data-aba="sistema" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700">Sistema TETRA</button>
+        <button role="tab" data-aba="sistema" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700 whitespace-nowrap">Sistema TETRA</button>
     </nav>
 
     <main id="conteudo">
@@ -168,6 +169,53 @@
                     </table>
                 </div>
                 <p id="rodapeParque" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+            </div>
+        </section>
+
+        <!-- ─── Telemóveis ─────────────────────────────────── -->
+        <section id="abaTelemoveis" class="hidden">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+                <div class="flex-1 min-w-[240px]">
+                    <label for="procuraTel" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
+                    <input id="procuraTel" type="search" placeholder="Número, IMEI, modelo, serviço ou quem o tem…"
+                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="filtroEstadoTel" class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
+                    <select id="filtroEstadoTel" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Todos</option>
+                        <option value="atribuido">Entregues</option>
+                        <option value="disponivel">Disponíveis</option>
+                        <option value="avariado">Avariados</option>
+                        <option value="abatido">Abatidos</option>
+                    </select>
+                </div>
+                <button id="btnNovoTel" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+                    + Novo telemóvel
+                </button>
+                <button id="btnExportarTel" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                    Exportar CSV
+                </button>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                            <tr>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Número</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">IMEI</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Equipamento</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Estado</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Quem o tem</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Entregue</th>
+                                <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaTelemoveis" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <p id="rodapeTelemoveis" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
             </div>
         </section>
 
@@ -280,11 +328,39 @@ const API = '/api/radios';
 const estado = {
   permissoes: null,
   radios: [],
+  telemoveis: [],
   conferencia: null,
   filtros: { q: '', estado: '', marca: '' },
+  filtrosTel: { q: '', estado: '' },
   filtroConferencia: '',
   aba: 'parque',
   radioAberto: null,
+  telemovelAberto: null,
+};
+
+/**
+ * Os dois tipos de activo, para as janelas de entrega, devolução, avaria e abate
+ * servirem os dois. Só muda o princípio do caminho na API e o que se recarrega a
+ * seguir — o resto do fluxo é igual, e duplicá-lo era garantir que uma das
+ * cópias ficava para trás na primeira correcção.
+ */
+const TIPOS = {
+  radios: {
+    base: '/radios',
+    nome: 'rádio',
+    lista: () => estado.radios,
+    aberto: () => estado.radioAberto,
+    recarregar: () => carregarParque(),
+    detalhe: id => abrirDetalhe(id),
+  },
+  telemoveis: {
+    base: '/telemoveis',
+    nome: 'telemóvel',
+    lista: () => estado.telemoveis,
+    aberto: () => estado.telemovelAberto,
+    recarregar: () => carregarTelemoveis(),
+    detalhe: id => abrirDetalheTelemovel(id),
+  },
 };
 
 // ─── Utilitários ───────────────────────────────────────────
@@ -424,14 +500,26 @@ function desenharParque() {
   if (window.lucide) lucide.createIcons();
 }
 
+/**
+ * Os cartões de cima seguem o separador aberto.
+ *
+ * Mostrar sempre as contagens dos rádios era pôr 407 por cima de uma tabela com
+ * 300 telemóveis — o tipo de ecrã em que ninguém confia nos números.
+ */
 async function carregarEstatisticas() {
-  const e = await pedir('/estatisticas');
+  const telemoveis = estado.aba === 'telemoveis';
+  const e = await pedir(telemoveis ? '/telemoveis/estatisticas' : '/estatisticas');
+
+  document.getElementById('kpiTotalRotulo').textContent = telemoveis ? 'Telemóveis' : 'Rádios no parque';
+  document.getElementById('kpiSemSerieRotulo').textContent = telemoveis ? 'Sem cartão' : 'Sem nº de série';
   document.getElementById('kpiTotal').textContent = e.total;
   document.getElementById('kpiAtribuidos').textContent = e.atribuidos;
   document.getElementById('kpiDisponiveis').textContent = e.disponiveis;
   document.getElementById('kpiAvariados').textContent = e.avariados;
   document.getElementById('kpiAbatidos').textContent = e.abatidos;
-  document.getElementById('kpiSemSerie').textContent = e.sem_serie;
+  document.getElementById('kpiSemSerie').textContent = telemoveis ? e.sem_numero : e.sem_serie;
+
+  if (telemoveis) return;
 
   const sel = document.getElementById('filtroMarca');
   const escolhida = sel.value;
@@ -439,6 +527,167 @@ async function carregarEstatisticas() {
     .filter(m => m.marca && m.marca !== '(sem marca)')
     .map(m => `<option value="${esc(m.marca)}">${esc(m.marca)} (${m.total})</option>`).join('');
   sel.value = escolhida;
+}
+
+// ─── Telemóveis ────────────────────────────────────────────
+
+async function carregarTelemoveis() {
+  const p = new URLSearchParams();
+  if (estado.filtrosTel.q) p.set('q', estado.filtrosTel.q);
+  if (estado.filtrosTel.estado) p.set('estado', estado.filtrosTel.estado);
+  estado.telemoveis = await pedir('/telemoveis?' + p.toString());
+  desenharTelemoveis();
+}
+
+function desenharTelemoveis() {
+  const podeEditar = estado.permissoes && estado.permissoes.canEdit;
+  const podeAdmin = estado.permissoes && estado.permissoes.canAdmin;
+  const corpo = document.getElementById('tabelaTelemoveis');
+
+  if (!estado.telemoveis.length) {
+    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">
+      Nenhum telemóvel encontrado com estes filtros.</td></tr>`;
+    document.getElementById('rodapeTelemoveis').textContent = '';
+    return;
+  }
+
+  corpo.innerHTML = estado.telemoveis.map(t => {
+    const entregue = t.matricula || t.nome_utilizador
+      ? `${esc(t.nome_utilizador || '—')}${t.matricula ? ` <span class="text-slate-400">· ${esc(t.matricula)}</span>` : ''}`
+      : '<span class="text-slate-300">—</span>';
+    const avaria = t.avaria_id
+      ? `<div class="text-[11px] text-amber-700 mt-0.5">${esc(t.avaria_descricao || 'avaria por classificar')}</div>` : '';
+    return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 font-bold text-slate-900">${t.numero ? esc(t.numero) : '<span class="text-slate-300 font-normal">sem cartão</span>'}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${t.imei1 ? esc(t.imei1) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2">
+        <div class="text-slate-800">${esc(t.marca || '—')} <span class="text-slate-500">${esc(t.modelo || '')}</span></div>
+        ${t.localizacao ? `<div class="text-[11px] text-slate-400">${esc(t.localizacao)}</div>` : ''}
+      </td>
+      <td class="px-3 py-2">${etiqueta(ESTADOS, t.estado)}${avaria}</td>
+      <td class="px-3 py-2">${entregue}</td>
+      <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${t.data_entrega ? dataPt(t.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">
+        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${t.id}" data-tipo="telemoveis" title="Ver detalhe" aria-label="Ver detalhe do telemóvel ${esc(t.numero || t.imei1 || '')}">
+          <i data-lucide="eye" class="w-4 h-4"></i></button>
+        <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${t.id}" data-tipo="telemoveis" title="Entregar" ${podeEditar && t.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="user-plus" class="w-4 h-4"></i></button>
+        <button class="accao text-emerald-600 hover:bg-emerald-50" data-devolver="${t.id}" data-tipo="telemoveis" title="Devolver" ${podeEditar && t.atribuicao_id ? '' : 'disabled'}>
+          <i data-lucide="undo-2" class="w-4 h-4"></i></button>
+        <button class="accao text-amber-600 hover:bg-amber-50" data-avaria="${t.id}" data-tipo="telemoveis" title="Registar avaria" ${podeEditar && t.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="wrench" class="w-4 h-4"></i></button>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-abate="${t.id}" data-tipo="telemoveis" title="Abater" ${podeAdmin && t.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="archive" class="w-4 h-4"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rodapeTelemoveis').textContent =
+    `${estado.telemoveis.length} ${estado.telemoveis.length === 1 ? 'telemóvel' : 'telemóveis'}` +
+    (estado.filtrosTel.q || estado.filtrosTel.estado ? ' (filtrado)' : '');
+  if (window.lucide) lucide.createIcons();
+}
+
+/**
+ * Detalhe do telemóvel. As credenciais não vêm nesta resposta: são um pedido
+ * à parte, feito só quando alguém carrega em "mostrar", e só a administração o
+ * consegue fazer.
+ */
+async function abrirDetalheTelemovel(id) {
+  const t = await pedir('/telemoveis/' + id);
+  estado.telemovelAberto = t;
+  estado.radioAberto = null;
+
+  document.getElementById('painelTitulo').textContent = t.numero ? `Telemóvel ${t.numero}` : 'Telemóvel sem cartão';
+  document.getElementById('painelSubtitulo').innerHTML =
+    `${esc(t.marca || '')} ${esc(t.modelo || '')} · IMEI ${t.imei1 ? esc(t.imei1) : '—'}`;
+
+  const atribuicoes = t.atribuicoes.length ? t.atribuicoes.map(a => `
+    <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
+      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.data_devolucao ? 'bg-slate-300' : 'bg-blue-500'}"></span>
+      <div class="text-sm">
+        <div class="font-semibold text-slate-800">${esc(a.nome_utilizador || 'sem nome')}
+          ${a.matricula ? `<span class="text-slate-400 font-normal">· ${esc(a.matricula)}</span>` : ''}</div>
+        <div class="text-xs text-slate-500">
+          ${dataPt(a.data_entrega)} → ${a.data_devolucao ? dataPt(a.data_devolucao) : '<span class="text-blue-600 font-semibold">ainda o tem</span>'}
+        </div>
+        ${a.obs ? `<div class="text-xs text-slate-400 mt-0.5">${esc(a.obs)}</div>` : ''}
+      </div>
+    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Nunca foi entregue.</li>';
+
+  const avarias = t.avarias.length ? t.avarias.map(a => `
+    <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
+      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.estado === 'aberta' ? 'bg-amber-500' : 'bg-slate-300'}"></span>
+      <div class="text-sm flex-1">
+        <div class="font-semibold text-slate-800">${esc(a.descricao || 'por classificar')}</div>
+        <div class="text-xs text-slate-500">
+          ${a.estado === 'aberta' ? `aberta ${a.data_registo ? 'desde ' + dataPt(a.data_registo) : 'sem data'}`
+                                  : `${a.estado === 'reparada' ? 'reparada' : 'irreparável'} em ${dataPt(a.data_reparacao)}`}
+        </div>
+      </div>
+      ${a.estado === 'aberta' && estado.permissoes.canEdit
+        ? `<button class="text-xs font-semibold text-emerald-700 hover:underline" data-reparar="${a.id}" data-tipo="telemoveis">Fechar</button>` : ''}
+    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Sem avarias registadas.</li>';
+
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex items-center gap-2 mb-3">
+        ${etiqueta(ESTADOS, t.estado)}
+        ${estado.permissoes.canEdit ? '<button id="btnEditarTel" class="ml-auto text-xs font-semibold text-blue-600 hover:underline">Editar equipamento</button>' : ''}
+      </div>
+      <dl class="grid grid-cols-2 gap-3">
+        ${linhaCampo('Número', esc(t.numero))}
+        ${linhaCampo('Serviço', esc(t.localizacao))}
+        ${linhaCampo('IMEI 1', t.imei1 ? `<span class="font-mono text-xs">${esc(t.imei1)}</span>` : '')}
+        ${linhaCampo('IMEI 2', t.imei2 ? `<span class="font-mono text-xs">${esc(t.imei2)}</span>` : '')}
+        ${linhaCampo('Marca / modelo', `${esc(t.marca || '')} ${esc(t.modelo || '')}`.trim())}
+      </dl>
+      ${t.obs ? `<p class="mt-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3">${esc(t.obs)}</p>` : ''}
+    </section>
+
+    <section class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Cartão e conta</h3>
+      <div id="zonaCredenciais">
+        ${estado.permissoes.canAdmin
+          ? `<p class="text-xs text-slate-500 mb-2">PIN, PUK e conta do aparelho. A leitura fica registada no log.</p>
+             <button id="btnCredenciais" class="text-xs font-semibold text-blue-600 hover:underline">Mostrar credenciais</button>`
+          : '<p class="text-sm text-slate-400">Reservado ao grupo Radios-Admin.</p>'}
+      </div>
+    </section>
+
+    ${t.abate ? `<section class="bg-slate-100 border border-slate-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Abatido${t.abate.data_abate ? ' em ' + dataPt(t.abate.data_abate) : ''}</h3>
+      <p class="text-sm text-slate-600">${esc(t.abate.motivo || 'sem motivo registado')}</p>
+      ${estado.permissoes.canAdmin ? '<button id="btnAnularAbateTel" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Anular abate</button>' : ''}
+    </section>` : ''}
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Entregas</h3>
+      <ul>${atribuicoes}</ul>
+    </section>
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Avarias</h3>
+      <ul>${avarias}</ul>
+    </section>`;
+
+  document.getElementById('painel').classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+/** Vai buscar as credenciais e mostra-as no lugar do botão. */
+async function mostrarCredenciais(id) {
+  const c = await pedir(`/telemoveis/${id}/credenciais`);
+  document.getElementById('zonaCredenciais').innerHTML = `
+    <dl class="grid grid-cols-2 gap-3">
+      ${linhaCampo('PIN', c.pin ? `<span class="font-mono">${esc(c.pin)}</span>` : '')}
+      ${linhaCampo('PUK', c.puk ? `<span class="font-mono">${esc(c.puk)}</span>` : '')}
+      ${linhaCampo('Utilizador', c.utilizador ? `<span class="font-mono">${esc(c.utilizador)}</span>` : '')}
+      ${linhaCampo('Palavra passe', c.palavra_passe ? `<span class="font-mono">${esc(c.palavra_passe)}</span>` : '')}
+    </dl>
+    ${c.pin_curto ? `<p class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+      Este PIN tem menos de 4 dígitos: na folha de origem era um número e o Excel comeu os zeros à
+      esquerda. Confirma no cartão antes de o usar — dez tentativas erradas pedem o PUK.</p>` : ''}`;
 }
 
 // ─── Detalhe ───────────────────────────────────────────────
@@ -453,6 +702,7 @@ function linhaCampo(rotulo, valor) {
 async function abrirDetalhe(id) {
   const r = await pedir('/radios/' + id);
   estado.radioAberto = r;
+  estado.telemovelAberto = null;   // o painel é um só; abrir um fecha o outro
 
   document.getElementById('painelTitulo').textContent = r.indicativo ? `Rádio ${r.indicativo}` : 'Rádio sem indicativo';
   document.getElementById('painelSubtitulo').innerHTML =
@@ -543,6 +793,7 @@ async function abrirDetalhe(id) {
 function fecharPainel() {
   document.getElementById('painel').classList.add('hidden');
   estado.radioAberto = null;
+  estado.telemovelAberto = null;
 }
 
 // ─── Modais de formulário ──────────────────────────────────
@@ -588,16 +839,29 @@ function dadosDoModal() {
 }
 
 /** Recarrega o que está à vista depois de uma alteração. */
-async function refrescar(idDetalhe) {
-  await Promise.all([carregarParque(), carregarEstatisticas()]);
+async function refrescar(tipo, idDetalhe) {
+  const t = TIPOS[tipo] || TIPOS.radios;
+  await Promise.all([t.recarregar(), carregarEstatisticas()]);
   estado.conferencia = null;             // fica por recarregar: só se lá voltarem
-  if (idDetalhe) await abrirDetalhe(idDetalhe);
+  if (idDetalhe) await t.detalhe(idDetalhe);
 }
 
-function modalEntregar(id) {
-  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+/** O equipamento que a janela está a tratar, venha da tabela ou do painel aberto. */
+function equipamento(id, tipo) {
+  const t = TIPOS[tipo] || TIPOS.radios;
+  return t.lista().find(x => x.id === id) || t.aberto() || {};
+}
+
+/** Rótulo de um equipamento: o indicativo do rádio, o número do telemóvel. */
+function rotulo(item, tipo) {
+  return tipo === 'telemoveis' ? (item.numero || '') : (item.indicativo || '');
+}
+
+function modalEntregar(id, tipo) {
+  const r = equipamento(id, tipo);
+  const t = TIPOS[tipo] || TIPOS.radios;
   abrirModal({
-    titulo: `Entregar o rádio ${r.indicativo || ''}`.trim(),
+    titulo: `Entregar o ${t.nome} ${rotulo(r, tipo)}`.trim(),
     ajuda: r.atribuicao_id ? `Está entregue a ${r.nome_utilizador || 'alguém'} — essa entrega é fechada nesta data.` : '',
     campos: [
       { nome: 'matricula', rotulo: 'Matrícula', tipo: 'text', lista: 'listaPessoas', dica: '138415' },
@@ -608,9 +872,9 @@ function modalEntregar(id) {
     ],
     textoGravar: 'Entregar',
     gravar: async d => {
-      await enviar(`/radios/${id}/atribuir`, d);
+      await enviar(`${t.base}/${id}/atribuir`, d);
       toast('Entrega registada.');
-      await refrescar(estado.radioAberto ? id : null);
+      await refrescar(tipo, t.aberto() ? id : null);
     },
   });
   carregarPessoas();
@@ -625,10 +889,11 @@ async function carregarPessoas() {
   } catch (e) { /* o autocompletar é um extra: sem ele o campo continua a funcionar */ }
 }
 
-function modalDevolver(id) {
-  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+function modalDevolver(id, tipo) {
+  const r = equipamento(id, tipo);
+  const t = TIPOS[tipo] || TIPOS.radios;
   abrirModal({
-    titulo: `Devolver o rádio ${r.indicativo || ''}`.trim(),
+    titulo: `Devolver o ${t.nome} ${rotulo(r, tipo)}`.trim(),
     ajuda: r.nome_utilizador ? `Entregue a ${r.nome_utilizador}.` : '',
     campos: [
       { nome: 'data_devolucao', rotulo: 'Data de devolução', tipo: 'date', valor: hojeISO() },
@@ -636,18 +901,30 @@ function modalDevolver(id) {
     ],
     textoGravar: 'Devolver',
     gravar: async d => {
-      await enviar(`/radios/${id}/devolver`, d);
+      await enviar(`${t.base}/${id}/devolver`, d);
       toast('Devolução registada.');
-      await refrescar(estado.radioAberto ? id : null);
+      await refrescar(tipo, t.aberto() ? id : null);
     },
   });
 }
 
-function modalAvaria(id) {
-  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+/**
+ * A avaria é o único formulário em que os dois tipos divergem: um rádio tem
+ * avaria de programação ou física e um sítio onde fica; um telemóvel tem uma
+ * descrição e mais nada. Ver a migração 002 — a coluna `ordem` não foi copiada
+ * para os telemóveis só para as tabelas ficarem iguais.
+ */
+function modalAvaria(id, tipo) {
+  const r = equipamento(id, tipo);
+  const t = TIPOS[tipo] || TIPOS.radios;
+  const telemovel = tipo === 'telemoveis';
   abrirModal({
-    titulo: `Registar avaria no rádio ${r.indicativo || ''}`.trim(),
-    campos: [
+    titulo: `Registar avaria no ${t.nome} ${rotulo(r, tipo)}`.trim(),
+    campos: telemovel ? [
+      { nome: 'descricao', rotulo: 'Avaria', tipo: 'text', obrigatorio: true, dica: 'Ecrã partido, não liga, software danificado…' },
+      { nome: 'data_registo', rotulo: 'Data', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ] : [
       { nome: 'tipo_avaria', rotulo: 'Avaria', tipo: 'text', obrigatorio: true, dica: 'Prog., n/liga, teclado, ecrã partido…' },
       { nome: 'ordem', rotulo: 'Tipo', tipo: 'select', valor: 'P', opcoes: [
         { valor: 'P', texto: 'P — programação (resolve-se no posto)' },
@@ -663,15 +940,17 @@ function modalAvaria(id) {
     ],
     textoGravar: 'Registar avaria',
     gravar: async d => {
-      await enviar(`/radios/${id}/avarias`, d);
+      await enviar(`${t.base}/${id}/avarias`, d);
       toast('Avaria registada.');
-      await refrescar(estado.radioAberto ? id : null);
+      await refrescar(tipo, t.aberto() ? id : null);
     },
   });
 }
 
-function modalReparar(avariaId) {
-  const id = estado.radioAberto ? estado.radioAberto.id : null;
+function modalReparar(avariaId, tipo) {
+  const t = TIPOS[tipo] || TIPOS.radios;
+  const aberto = t.aberto();
+  const id = aberto ? aberto.id : null;
   abrirModal({
     titulo: 'Fechar a avaria',
     campos: [
@@ -684,18 +963,21 @@ function modalReparar(avariaId) {
     ],
     textoGravar: 'Fechar',
     gravar: async d => {
-      await enviar(`/avarias/${avariaId}/reparar`, d);
+      // Os rádios têm a rota no topo (`/avarias/:id/reparar`); os telemóveis
+      // dentro do seu próprio caminho, porque falam com outra base.
+      await enviar(tipo === 'telemoveis' ? `/telemoveis/avarias/${avariaId}/reparar` : `/avarias/${avariaId}/reparar`, d);
       toast('Avaria fechada.');
-      await refrescar(id);
+      await refrescar(tipo, id);
     },
   });
 }
 
-function modalAbate(id) {
-  const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
+function modalAbate(id, tipo) {
+  const r = equipamento(id, tipo);
+  const t = TIPOS[tipo] || TIPOS.radios;
   abrirModal({
-    titulo: `Abater o rádio ${r.indicativo || ''}`.trim(),
-    ajuda: 'O rádio sai do parque activo mas não é apagado: o histórico fica.',
+    titulo: `Abater o ${t.nome} ${rotulo(r, tipo)}`.trim(),
+    ajuda: `O ${t.nome} sai do parque activo mas não é apagado: o histórico fica.`,
     campos: [
       { nome: 'data_abate', rotulo: 'Data do abate', tipo: 'date', valor: hojeISO() },
       { nome: 'motivo', rotulo: 'Motivo', tipo: 'text', obrigatorio: true, dica: 'Irreparável, extraviado, fim de vida…' },
@@ -703,9 +985,41 @@ function modalAbate(id) {
     ],
     textoGravar: 'Abater',
     gravar: async d => {
-      await enviar(`/radios/${id}/abate`, d);
-      toast('Rádio abatido.');
-      await refrescar(estado.radioAberto ? id : null);
+      await enviar(`${t.base}/${id}/abate`, d);
+      toast(tipo === 'telemoveis' ? 'Telemóvel abatido.' : 'Rádio abatido.');
+      await refrescar(tipo, t.aberto() ? id : null);
+    },
+  });
+}
+
+/** O formulário do equipamento: os campos são os de cada tipo, não há meio termo. */
+function modalEquipamentoTelemovel(t) {
+  const novo = !t;
+  t = t || {};
+  abrirModal({
+    titulo: novo ? 'Novo telemóvel' : `Editar o telemóvel ${t.numero || ''}`.trim(),
+    ajuda: novo ? 'Basta o número do cartão ou o IMEI.'
+                : 'As credenciais editam-se na secção "Cartão e conta", e só pela administração.',
+    campos: [
+      { nome: 'numero', rotulo: 'Número', tipo: 'text', valor: t.numero, dica: '914699022' },
+      { nome: 'imei1', rotulo: 'IMEI 1', tipo: 'text', valor: t.imei1, nota: 'No ficheiro de origem só estão os últimos dígitos.' },
+      { nome: 'imei2', rotulo: 'IMEI 2', tipo: 'text', valor: t.imei2 },
+      { nome: 'marca', rotulo: 'Marca', tipo: 'text', valor: t.marca || 'Motorola' },
+      { nome: 'modelo', rotulo: 'Modelo', tipo: 'text', valor: t.modelo, dica: 'XT1922-3 moto g6 Play' },
+      { nome: 'localizacao', rotulo: 'Serviço', tipo: 'text', valor: t.localizacao, dica: 'NSIC, Com. ET, …' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: t.obs },
+    ],
+    gravar: async d => {
+      if (novo) {
+        const criado = await enviar('/telemoveis', d);
+        toast('Telemóvel criado.');
+        await refrescar('telemoveis');
+        await abrirDetalheTelemovel(criado.id);
+      } else {
+        await enviar('/telemoveis/' + t.id, d, 'PUT');
+        toast('Alterações gravadas.');
+        await refrescar('telemoveis', t.id);
+      }
     },
   });
 }
@@ -730,12 +1044,12 @@ function modalEquipamento(r) {
       if (novo) {
         const criado = await enviar('/radios', d);
         toast('Rádio criado.');
-        await refrescar();
+        await refrescar('radios');
         await abrirDetalhe(criado.id);
       } else {
         await enviar('/radios/' + r.id, d, 'PUT');
         toast('Alterações gravadas.');
-        await refrescar(r.id);
+        await refrescar('radios', r.id);
       }
     },
   });
@@ -813,22 +1127,39 @@ async function carregarSistema(q) {
  * CSV com ponto e vírgula e BOM: é o que o Excel em português abre sem pedir
  * nada. Com vírgula, o Excel PT junta tudo numa coluna só.
  */
-function exportarCSV() {
-  const colunas = ['indicativo', 'num_serie', 'marca', 'modelo', 'alias_tei', 'radio_id_tei',
-                   'estado', 'matricula', 'nome_utilizador', 'data_entrega', 'guia', 'tipo_avaria', 'obs'];
+function descarregarCSV(nomeFicheiro, colunas, registos) {
   const celula = v => {
     if (v === null || v === undefined) return '';
     const s = String(v).replace(/"/g, '""');
     return /[";\n]/.test(s) ? `"${s}"` : s;
   };
-  const linhas = [colunas.join(';')].concat(estado.radios.map(r =>
+  const linhas = [colunas.join(';')].concat(registos.map(r =>
     colunas.map(c => celula(c === 'data_entrega' && r[c] ? dataPt(r[c]) : r[c])).join(';')));
   const url = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `radios_${hojeISO()}.csv`;
+  a.download = nomeFicheiro;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function exportarCSV() {
+  descarregarCSV(`radios_${hojeISO()}.csv`,
+    ['indicativo', 'num_serie', 'marca', 'modelo', 'alias_tei', 'radio_id_tei',
+     'estado', 'matricula', 'nome_utilizador', 'data_entrega', 'guia', 'tipo_avaria', 'obs'],
+    estado.radios);
+}
+
+/**
+ * Sem PIN, PUK nem conta: a listagem que alimenta isto não os traz da API (ver
+ * `telemoveis.js`), e é de propósito que a exportação não vá buscá-los — um CSV
+ * é a maneira mais fácil de espalhar 300 credenciais por aí.
+ */
+function exportarCSVTelemoveis() {
+  descarregarCSV(`telemoveis_${hojeISO()}.csv`,
+    ['numero', 'imei1', 'imei2', 'marca', 'modelo', 'estado', 'localizacao',
+     'matricula', 'nome_utilizador', 'data_entrega', 'avaria_descricao', 'obs'],
+    estado.telemoveis);
 }
 
 // ─── Ligações ──────────────────────────────────────────────
@@ -842,8 +1173,17 @@ function mudarAba(nome) {
     b.setAttribute('aria-selected', activa ? 'true' : 'false');
   }
   document.getElementById('abaParque').classList.toggle('hidden', nome !== 'parque');
+  document.getElementById('abaTelemoveis').classList.toggle('hidden', nome !== 'telemoveis');
   document.getElementById('abaConferencia').classList.toggle('hidden', nome !== 'conferencia');
   document.getElementById('abaSistema').classList.toggle('hidden', nome !== 'sistema');
+
+  // Os cartões de cima seguem o separador; a conferência e o sistema TETRA são
+  // dos rádios, portanto ficam com as contagens deles.
+  carregarEstatisticas().catch(e => toast(e.message, 'erro'));
+
+  if (nome === 'telemoveis' && !estado.telemoveis.length) {
+    carregarTelemoveis().catch(e => toast(e.message, 'erro'));
+  }
   if (nome === 'conferencia') carregarConferencia().catch(e => toast(e.message, 'erro'));
   if (nome === 'sistema') carregarSistema(document.getElementById('procuraSistema').value).catch(e => toast(e.message, 'erro'));
 }
@@ -855,33 +1195,52 @@ function procuraAdiada(fn) {
 }
 
 document.addEventListener('click', async ev => {
-  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-abate],[data-reparar],[data-situacao],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnAnularAbate,#btnNovo,#btnExportar,.aba');
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-abate],[data-reparar],[data-situacao],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnEditarTel,#btnAnularAbate,#btnAnularAbateTel,#btnCredenciais,#btnNovo,#btnNovoTel,#btnExportar,#btnExportarTel,.aba');
   if (!alvo) return;
   const d = alvo.dataset;
+  // As linhas dos telemóveis trazem `data-tipo`; as dos rádios não trazem nada,
+  // que é o que estava lá antes de existir um segundo tipo.
+  const tipo = d.tipo || 'radios';
   try {
     if (alvo.matches('[data-fechar]')) return fecharPainel();
     if (alvo.matches('[data-fechar-modal]')) return fecharModal();
     if (alvo.matches('.aba')) return mudarAba(d.aba);
     if (alvo.id === 'btnExportar') return exportarCSV();
+    if (alvo.id === 'btnExportarTel') return exportarCSVTelemoveis();
     if (alvo.id === 'btnNovo') return modalEquipamento(null);
+    if (alvo.id === 'btnNovoTel') return modalEquipamentoTelemovel(null);
     if (alvo.id === 'btnEditar') return modalEquipamento(estado.radioAberto);
+    if (alvo.id === 'btnEditarTel') return modalEquipamentoTelemovel(estado.telemovelAberto);
+    if (alvo.id === 'btnCredenciais') return mostrarCredenciais(estado.telemovelAberto.id);
     if (alvo.id === 'btnAnularAbate') {
       if (!confirm('Anular o abate e devolver o rádio ao parque?')) return;
       await pedir(`/radios/${estado.radioAberto.id}/abate`, { method: 'DELETE' });
       toast('Abate anulado.');
-      return refrescar(estado.radioAberto.id);
+      return refrescar('radios', estado.radioAberto.id);
     }
-    if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
-    if (d.entregar) return modalEntregar(Number(d.entregar));
-    if (d.devolver) return modalDevolver(Number(d.devolver));
-    if (d.avaria) return modalAvaria(Number(d.avaria));
-    if (d.abate) return modalAbate(Number(d.abate));
-    if (d.reparar) return modalReparar(Number(d.reparar));
+    if (alvo.id === 'btnAnularAbateTel') {
+      if (!confirm('Anular o abate e devolver o telemóvel ao parque?')) return;
+      await pedir(`/telemoveis/${estado.telemovelAberto.id}/abate`, { method: 'DELETE' });
+      toast('Abate anulado.');
+      return refrescar('telemoveis', estado.telemovelAberto.id);
+    }
+    if (d.detalhe) return (TIPOS[tipo] || TIPOS.radios).detalhe(Number(d.detalhe));
+    if (d.entregar) return modalEntregar(Number(d.entregar), tipo);
+    if (d.devolver) return modalDevolver(Number(d.devolver), tipo);
+    if (d.avaria) return modalAvaria(Number(d.avaria), tipo);
+    if (d.abate) return modalAbate(Number(d.abate), tipo);
+    if (d.reparar) return modalReparar(Number(d.reparar), tipo);
     if (d.situacao !== undefined && alvo.closest('#chipsConferencia')) {
       estado.filtroConferencia = estado.filtroConferencia === d.situacao ? '' : d.situacao;
       return carregarConferencia();
     }
     if (d.estado !== undefined && alvo.classList.contains('cartao')) {
+      // O cartão filtra a tabela que está à vista — os números são dela.
+      if (estado.aba === 'telemoveis') {
+        estado.filtrosTel.estado = d.estado;
+        document.getElementById('filtroEstadoTel').value = d.estado;
+        return carregarTelemoveis();
+      }
       estado.filtros.estado = d.estado;
       document.getElementById('filtroEstado').value = d.estado;
       mudarAba('parque');
@@ -922,6 +1281,14 @@ document.getElementById('filtroMarca').addEventListener('change', ev => {
 document.getElementById('procuraSistema').addEventListener('input', ev => {
   procuraAdiada(() => carregarSistema(ev.target.value.trim()).catch(e => toast(e.message, 'erro')));
 });
+document.getElementById('procuraTel').addEventListener('input', ev => {
+  estado.filtrosTel.q = ev.target.value.trim();
+  procuraAdiada(() => carregarTelemoveis().catch(e => toast(e.message, 'erro')));
+});
+document.getElementById('filtroEstadoTel').addEventListener('change', ev => {
+  estado.filtrosTel.estado = ev.target.value;
+  carregarTelemoveis().catch(e => toast(e.message, 'erro'));
+});
 
 document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape') return;
@@ -946,7 +1313,10 @@ async function arrancar() {
     estado.permissoes.nome || estado.permissoes.username || '—';
   document.getElementById('etiquetaAcesso').textContent =
     estado.permissoes.canAdmin ? 'Administração' : estado.permissoes.canEdit ? 'Escrita' : 'Só consulta';
-  if (estado.permissoes.canEdit) document.getElementById('btnNovo').classList.remove('hidden');
+  if (estado.permissoes.canEdit) {
+    document.getElementById('btnNovo').classList.remove('hidden');
+    document.getElementById('btnNovoTel').classList.remove('hidden');
+  }
 
   try {
     await Promise.all([carregarEstatisticas(), carregarParque()]);

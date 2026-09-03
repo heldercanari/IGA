@@ -1,9 +1,12 @@
-# Gestão de Rádios — Polícia Municipal de Lisboa
+# Inventário e Gestão de Ativos — Polícia Municipal de Lisboa
 
-Módulo destacado da intranet da PM para gerir o parque de rádios TETRA: quem tem o quê, o
+Módulo destacado da intranet da PM para gerir o equipamento distribuído: quem tem o quê, o
 que está avariado, o que foi abatido, e a conferência contra o questionário aos agentes.
 
-Substitui o ficheiro `Radios apanhado.xlsx` (OneDrive, 7 folhas) que era o registo único.
+Dois tipos de activo, um separador para cada:
+
+- **Rádios** — 407 aparelhos TETRA. Substitui o `Radios apanhado.xlsx` (OneDrive, 7 folhas).
+- **Telemóveis** — 300 aparelhos. Substitui o `Livro 1.xlsx` (`C:\Apps\telemoveis`, uma folha).
 
 > Este repositório é **um módulo destacado**, não um projecto autónomo — mesmo molde do
 > `correspondencia-pm`. A casa a sério do código é o repositório da intranet; aqui está só o
@@ -51,7 +54,27 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\001_radios.sql
 - `000_seed_local.sql` — andaime de desenvolvimento: cria `colaboradores`, `grupos`,
   `grupo_membros` e `admin_users` com utilizadores de teste. **Não é uma migração da
   intranet**; lá estas tabelas já existem.
-- `001_radios.sql` — o módulo: tabelas do parque e os três grupos de acesso.
+- `001_radios.sql` — os rádios: tabelas do parque e os três grupos de acesso.
+
+### A segunda base: telemóveis
+
+Os telemóveis vivem em base própria (`TelemoveisDev`). É uma decisão de desenvolvimento — **na
+intranet os módulos partilham a mesma base** —, e por isso nenhum SQL qualifica a base: a
+separação está toda na ligação, em `db-telemoveis.js`, apontada pelo `DB_DATABASE_TELEMOVEIS`.
+Para juntar tudo numa base só, põe-se essa variável igual ao `DB_DATABASE` e corre-se a `002`
+lá; não há uma linha de SQL para reescrever.
+
+```bash
+sqlcmd -S localhost -E -I -Q "CREATE DATABASE TelemoveisDev"
+```
+
+```bash
+sqlcmd -S localhost -E -d TelemoveisDev -I -Q "CREATE USER radios_dev FOR LOGIN radios_dev; ALTER ROLE db_owner ADD MEMBER radios_dev;"
+```
+
+```bash
+sqlcmd -S localhost -E -d TelemoveisDev -I -f 65001 -i migrations\002_telemoveis.sql
+```
 
 ### Carregar os dados do Excel
 
@@ -59,19 +82,25 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\001_radios.sql
 npm run importar
 ```
 
-Procura o `Radios apanhado.xlsx` no OneDrive da CML. Para outro caminho:
+```bash
+npm run importar-telemoveis
+```
+
+O primeiro procura o `Radios apanhado.xlsx` no OneDrive da CML; o segundo lê o
+`C:\Apps\telemoveis\Livro 1.xlsx`. Ambos aceitam um caminho e a bandeira `--limpar`, que
+esvazia antes de importar (só para desenvolvimento: apaga o que foi registado pelo ecrã):
 
 ```bash
 npm run importar -- "C:\caminho\Radios apanhado.xlsx"
 ```
 
-Pode correr as vezes que forem precisas — procura por número de série e, na falta dele, por
-indicativo, e não duplica. `npm run importar -- --limpar` esvazia o parque antes (só para
-desenvolvimento: apaga o que foi registado pelo ecrã).
+Podem correr as vezes que forem precisas — os rádios são procurados por número de série e, na
+falta dele, por indicativo; os telemóveis pelo número do cartão e, na falta dele, pelo IMEI.
 
-O importador imprime no fim um resumo por folha e as **notas** — as linhas do ficheiro que
-contam rádios sem os listar ("Existem mais 7 rádios Secura 2120 sem número"). São 39 rádios
-que ninguém registou individualmente e que continuam por registar.
+Os dois imprimem um resumo no fim. O dos rádios lista ainda as **notas** — as linhas do
+ficheiro que contam rádios sem os listar ("Existem mais 7 rádios Secura 2120 sem número"): são
+39 rádios que ninguém registou individualmente. O dos telemóveis conta as **linhas repetidas**
+na folha (há uma).
 
 ## Correr
 
@@ -117,6 +146,16 @@ que aparece o trabalho por fazer.
 **Sistema TETRA** — as 715 linhas da exportação da consola, só de leitura. Cruzam-se com o
 parque pelo número de série.
 
+**Telemóveis** — 300 aparelhos com número, IMEI, serviço e estado, com as mesmas entregas,
+avarias e abates dos rádios. As **credenciais do cartão e da conta** (PIN, PUK, utilizador e
+palavra passe) não aparecem na listagem nem na exportação: só na ficha do aparelho, atrás de
+"mostrar credenciais", e só para quem é `Radios-Admin`. Cada leitura fica no log.
+
+> ⚠️ Dois avisos sobre as credenciais que vêm do ficheiro de origem: a **palavra passe é
+> derivável do utilizador** nos 300 aparelhos (`pm251ind` → `pm251ind!`), e os **PIN perderam
+> os zeros à esquerda** por a coluna ser numérica no Excel — o ecrã assinala os que têm menos
+> de 4 dígitos, e não os completa: dez tentativas erradas pedem o PUK.
+
 ## API
 
 Tudo debaixo de `/api/radios`. O gate de VER está aplicado ao router inteiro; as mutações
@@ -131,6 +170,12 @@ levam `exigirEdicao`, e o abate e a remoção `exigirAdmin`.
 | POST | `/avarias/:id/reparar` | editar |
 | POST · DELETE | `/radios/:id/abate` | administração |
 | DELETE | `/radios/:id` | administração |
+| GET | `/telemoveis` · `/telemoveis/:id` · `/telemoveis/estatisticas` | ver |
+| POST · PUT | `/telemoveis` · `/telemoveis/:id` | editar |
+| POST | `/telemoveis/:id/atribuir` · `/devolver` · `/avarias` | editar |
+| POST | `/telemoveis/avarias/:id/reparar` | editar |
+| GET | `/telemoveis/:id/credenciais` | administração |
+| POST · DELETE | `/telemoveis/:id/abate` · DELETE `/telemoveis/:id` | administração |
 
 ## Grupos de acesso
 

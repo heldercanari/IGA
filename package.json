@@ -8,7 +8,8 @@
   },
   "scripts": {
     "harness": "node _harness-radios.js",
-    "importar": "node scripts/importar_xlsx.js"
+    "importar": "node scripts/importar_xlsx.js",
+    "importar-telemoveis": "node scripts/importar_telemoveis.js"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

@@ -1,4 +1,4 @@
-# Gestão de Rádios — instruções para agentes
+# Inventário e Gestão de Ativos — instruções para agentes
 
 Este repositório é **um módulo destacado da intranet da Polícia Municipal de Lisboa**, não um
 projecto autónomo. A casa a sério do código é o repositório da intranet; aqui está só a gestão
@@ -31,10 +31,26 @@ se descobre a ler o código, e o que já correu mal antes.
 - ⚠️ **Sem `#` nas passwords do `.env`.** O `dotenv` corta um valor sem aspas no primeiro
   cardinal, e o que chega ao driver é só o princípio — o erro que se vê é "Login failed".
 
+## Duas bases de dados
+
+- **Os rádios estão na `RadiosDev` e os telemóveis na `TelemoveisDev`.** Duas pools: o `db.js`
+  (cópia da intranet) e o `db-telemoveis.js`, que só existe por causa disto.
+- ⚠️ **Nunca qualifiques a base no SQL.** Nada de `TelemoveisDev.dbo.telemoveis` nem de nomes
+  de três partes: a separação vive na ligação, não nas consultas. **Na intranet os módulos
+  partilham a mesma base**, e é assim que juntar tudo é apagar o `DB_DATABASE_TELEMOVEIS` do
+  `.env` — sem tocar numa linha de SQL.
+- Pela mesma razão **não há consultas que cruzem os dois tipos de activo**. Uma pessoa com um
+  rádio e um telemóvel aparece nas duas listas, e não há JOIN possível entre elas.
+- As rotas dos telemóveis estão em `server/routes/radios/telemoveis.js` **porque falam com a
+  outra pool**, não por serem outro módulo: montam dentro do mesmo router e usam os mesmos
+  grupos de acesso.
+- O que os dois tipos partilham vive em `server/routes/radios/comum.js` (leitura de campos e
+  datas). O recálculo do estado **não** está lá de propósito: conhece as tabelas de cada tipo.
+
 ## Base de dados
 
 - **O alvo é SQL Server.** Não escrevas SQL a tentar ser portável, nem introduzas abstracções
-  para isso. Em desenvolvimento é a base `RadiosDev` (o `correspondencia-pm` tem a sua).
+  para isso.
 - **`radios.estado` é uma coluna, não uma consulta** — e quem a escreve é `recalcularEstado()`
   em `server/routes/radios/index.js`. Qualquer coisa que mexa em atribuições, avarias ou abates
   tem de a chamar a seguir; **SQL escrito à mão que apague uma dessas linhas deixa o estado
@@ -62,6 +78,30 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
   `indicativoDoAlias()`.
 - **`TEI` e `Quest` são fotografias de outros sistemas**, por isso a importação substitui-as por
   inteiro. As outras folhas são acrescentadas sem duplicar.
+
+## O ficheiro dos telemóveis, e o que ele prega
+
+- ⚠️ **O espaço duro (` `) conta como vazio.** A folha tem 299 células com um NBSP
+  sozinho — coluna limpa à barra de espaços. Sem o tratar, 29 matrículas e 2 PIN vazios
+  passavam por preenchidos. É o que o `texto()` do `scripts/importar_telemoveis.js` faz.
+- **O estado vem de texto livre em quatro colunas** ('Entregue', a segunda 'Data',
+  'Localização' e 'OBS.'): "ABATE 2023" aparece onde devia estar um nome. O `classificar()` lê
+  isso por palavras, o abate ganha à avaria, e **o texto original fica sempre em `obs`** — a
+  decisão do importador tem de poder ser conferida sem voltar ao Excel.
+- **A folha tem 301 linhas para 300 aparelhos** (a 124 repete-se na 125, igual até ao PIN). O
+  índice único no número faz a segunda cair em cima da primeira, e o resumo conta-a em
+  `duplicadas_na_folha` em vez de a esconder num "actualizado".
+
+## Credenciais dos telemóveis
+
+- ⚠️ **Nenhuma consulta de listagem ou de detalhe pode devolver `pin`, `puk`, `utilizador` ou
+  `palavra_passe`.** Os SELECT do `telemoveis.js` escrevem as colunas uma a uma e **não há
+  `SELECT *`** — é o que faz de acrescentar um campo à listagem uma decisão e não um descuido.
+- A única porta é `GET /telemoveis/:id/credenciais`, com `exigirAdmin`, e a leitura fica no
+  log. O `PUT` também só grava credenciais a quem é `canAdmin`, e só os campos que vierem no
+  corpo: um formulário sem eles não pode apagá-las por omissão.
+- **O PIN não se completa com zeros à esquerda**, por muito que "20" seja obviamente "0020".
+  Dez tentativas erradas pedem o PUK. O ecrã avisa, o código não adivinha.
 
 ## Autorização
 
