@@ -310,8 +310,9 @@ function desenhar() {
     const entregue = t.matricula || t.nome_utilizador
       ? `${esc(t.nome_utilizador || '—')}${t.matricula ? ` <span class="text-slate-400">· ${esc(t.matricula)}</span>` : ''}`
       : '<span class="text-slate-300">—</span>';
-    const avaria = t.avaria_id
-      ? `<div class="text-[11px] text-amber-700 mt-0.5">${esc(t.avaria_descricao || 'avaria por classificar')}</div>` : '';
+    // A descrição da avaria NÃO vem para a tabela: são frases inteiras vindas do
+    // ficheiro de origem ("Avaria no ecra não responde ao toque") e desalinhavam
+    // as linhas todas. O estado diz que está avariado; o motivo está na ficha.
     return `<tr class="hover:bg-slate-50">
       <td class="px-3 py-2 font-bold text-slate-900">${t.numero ? esc(t.numero) : '<span class="text-slate-300 font-normal">sem cartão</span>'}</td>
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${t.imei1 ? esc(t.imei1) : '<span class="text-slate-300">—</span>'}</td>
@@ -319,7 +320,7 @@ function desenhar() {
         <div class="text-slate-800">${esc(t.marca || '—')} <span class="text-slate-500">${esc(t.modelo || '')}</span></div>
         ${t.localizacao ? `<div class="text-[11px] text-slate-400">${esc(t.localizacao)}</div>` : ''}
       </td>
-      <td class="px-3 py-2">${etiqueta(t.estado)}${avaria}</td>
+      <td class="px-3 py-2">${etiqueta(t.estado)}</td>
       <td class="px-3 py-2">${entregue}</td>
       <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${t.data_entrega ? dataPt(t.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">

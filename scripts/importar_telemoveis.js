@@ -118,20 +118,41 @@ const PALAVRAS_AVARIA = /avaria|avariad|ecra|ecran|danificad|\binop\b|extravia|p
 /**
  * Lê as frases soltas da linha e diz o que fazer com o aparelho.
  *
- * Devolve { estado, motivoAbate, descricaoAvaria } — e é de propósito que o
- * abate ganha à avaria: "abate camera partida" tem as duas palavras e é um
- * abate, não uma avaria por reparar.
+ * Devolve { motivoAbate, descricaoAvaria, usadas }. É de propósito que o abate
+ * ganha à avaria: "abate camera partida" tem as duas palavras e é um abate, não
+ * uma avaria por reparar.
+ *
+ * As frases que falam da avaria ou do abate **vão todas para o motivo**, unidas
+ * por ' · ', e ficam marcadas em `usadas` para NÃO se repetirem nas observações
+ * do aparelho. Antes apareciam nos dois sítios, e a ficha mostrava a mesma frase
+ * duas vezes — uma como nota, outra como avaria.
  */
 function classificar(frases) {
-  let motivoAbate = null;
-  let descricaoAvaria = null;
+  const doAbate = [];
+  const daAvaria = [];
+  const usadas = new Set();
   for (const f of frases) {
     if (!f) continue;
     const k = chave(f);
-    if (PALAVRAS_ABATE.test(k)) { motivoAbate = motivoAbate || f; continue; }
-    if (PALAVRAS_AVARIA.test(k)) descricaoAvaria = descricaoAvaria || f;
+    if (PALAVRAS_ABATE.test(k)) { doAbate.push(f); usadas.add(f); continue; }
+    if (PALAVRAS_AVARIA.test(k)) { daAvaria.push(f); usadas.add(f); }
   }
-  return { motivoAbate, descricaoAvaria };
+  // Sem repetidas: há linhas com a MESMA frase em três colunas ("Entregue ao
+  // NSIC… devido a avaria" está na localização, nas observações e na coluna
+  // solta), e juntá-las dava um motivo com a frase três vezes, cortado aos 200
+  // caracteres a meio da terceira.
+  const juntar = lista => {
+    const vistas = new Set();
+    const unicas = [];
+    for (const f of lista) {
+      const k = chave(f);
+      if (vistas.has(k)) continue;
+      vistas.add(k);
+      unicas.push(f);
+    }
+    return unicas.length ? unicas.join(' · ').slice(0, 200) : null;
+  };
+  return { motivoAbate: juntar(doAbate), descricaoAvaria: juntar(daAvaria), usadas };
 }
 
 /** A 'Localização' tanto traz o serviço ("NSIC", "Com. ET") como uma queixa. */
@@ -188,17 +209,19 @@ async function principal() {
     const extra = texto(r.getCell(17));
     const avariasCol = texto(r.getCell(18), 200);
 
-    const { motivoAbate, descricaoAvaria } =
-      classificar([entregue, data2Texto, localizacao, observacoes, avariasCol]);
+    const { motivoAbate, descricaoAvaria, usadas } =
+      classificar([entregue, data2Texto, localizacao, observacoes, avariasCol, extra]);
 
-    // O texto original fica todo, com a coluna de onde veio: é o que permite
-    // conferir a decisão de `classificar()` sem voltar ao Excel.
+    // O que sobra depois de a avaria e o abate levarem o que é deles, com a
+    // coluna de onde veio. Uma frase que já é o motivo da avaria não se repete
+    // aqui: no ecrã apareceria duas vezes na mesma ficha.
+    const sobra = v => (v && !usadas.has(v) ? v : null);
     const notas = [
-      data2Texto && !dataISO(data2Texto) ? `Data: ${data2Texto}` : null,
-      localizacao && !pareceServico(localizacao) ? `Localização: ${localizacao}` : null,
-      observacoes ? `Obs: ${observacoes}` : null,
-      avariasCol ? `Avarias: ${avariasCol}` : null,
-      extra ? `Inf: ${extra}` : null,
+      sobra(data2Texto) && !dataISO(data2Texto) ? `Data: ${data2Texto}` : null,
+      sobra(localizacao) && !pareceServico(localizacao) ? `Localização: ${localizacao}` : null,
+      sobra(observacoes) ? `Obs: ${observacoes}` : null,
+      sobra(avariasCol) ? `Avarias: ${avariasCol}` : null,
+      sobra(extra) ? `Inf: ${extra}` : null,
     ].filter(Boolean).join(' · ') || null;
 
     // Encontrar ou criar o aparelho.

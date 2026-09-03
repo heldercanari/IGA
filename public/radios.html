@@ -404,8 +404,9 @@ function desenharParque() {
     const entregue = r.matricula || r.nome_utilizador
       ? `${esc(r.nome_utilizador || '—')}${r.matricula ? ` <span class="text-slate-400">· ${esc(r.matricula)}</span>` : ''}`
       : '<span class="text-slate-300">—</span>';
-    const avaria = r.avaria_id
-      ? `<div class="text-[11px] text-amber-700 mt-0.5">${esc(r.tipo_avaria || 'avaria por classificar')}</div>` : '';
+    // O tipo de avaria NÃO vem para a tabela: o estado já diz que está avariado,
+    // e o motivo está na ficha. Igual à página dos telemóveis, onde eram frases
+    // inteiras da folha de origem a desalinhar as linhas.
     return `<tr class="hover:bg-slate-50">
       <td class="px-3 py-2 font-bold text-slate-900">${esc(r.indicativo || '—')}</td>
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${r.num_serie ? esc(r.num_serie) : '<span class="text-slate-300">sem série</span>'}</td>
@@ -413,7 +414,7 @@ function desenharParque() {
         <div class="text-slate-800">${esc(r.marca || '—')} <span class="text-slate-500">${esc(r.modelo || '')}</span></div>
         ${r.alias_tei ? `<div class="text-[11px] text-slate-400">${esc(r.alias_tei)}</div>` : ''}
       </td>
-      <td class="px-3 py-2">${etiqueta(ESTADOS, r.estado)}${avaria}</td>
+      <td class="px-3 py-2">${etiqueta(ESTADOS, r.estado)}</td>
       <td class="px-3 py-2">${entregue}</td>
       <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${r.data_entrega ? dataPt(r.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
