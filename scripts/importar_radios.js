@@ -3,9 +3,9 @@
 /**
  * Importador do `Radios apanhado.xlsx` → base de dados.
  *
- *   npm run importar                    (procura o ficheiro no OneDrive da PM)
- *   npm run importar -- "C:\caminho\Radios apanhado.xlsx"
- *   XLSX_RADIOS="C:\..." npm run importar
+ *   npm run importar-radios                    (procura o ficheiro no OneDrive da PM)
+ *   npm run importar-radios -- "C:\caminho\Radios apanhado.xlsx"
+ *   XLSX_RADIOS="C:\..." npm run importar-radios
  *
  * Corre as vezes que forem precisas: os equipamentos são procurados por número
  * de série e, na falta dele, por indicativo — não duplica o que já lá está. As
@@ -62,7 +62,7 @@ function localizarFicheiro() {
     .concat([path.join(casa, NOME_FICHEIRO)]);
   const achado = candidatos.find(p => fs.existsSync(p));
   if (!achado) {
-    throw new Error(`Não encontrei o "${NOME_FICHEIRO}". Passa o caminho: npm run importar -- "C:\\caminho\\${NOME_FICHEIRO}"`);
+    throw new Error(`Não encontrei o "${NOME_FICHEIRO}". Passa o caminho: npm run importar-radios -- "C:\\caminho\\${NOME_FICHEIRO}"`);
   }
   return achado;
 }

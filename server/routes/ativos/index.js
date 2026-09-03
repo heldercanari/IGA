@@ -1,0 +1,41 @@
+'use strict';
+
+/**
+ * Inventário e Gestão de Ativos — o router do módulo.
+ *
+ * Mount em server/index.js DEPOIS do SSPI:
+ *   const ativosApi = require('./routes/ativos');
+ *   app.use('/api/ativos', ativosApi);
+ *
+ * Este ficheiro não tem rotas próprias: abre o `/permissoes`, aplica o gate de
+ * VER e monta um router por tipo de equipamento. **É aqui que um tipo novo
+ * entra** — uma linha, a seguir às outras duas:
+ *
+ *   /api/ativos/radios      → ./radios.js       (base `RadiosDev`)
+ *   /api/ativos/telemoveis  → ./telemoveis.js   (base `TelemoveisDev`)
+ *
+ * Cada tipo tem o seu ficheiro e a sua base; o que partilham são as permissões
+ * (grupos `Ativos`, `Ativos-Consulta` e `Ativos-Admin`) e os ajudantes de
+ * `comum.js`. Não há rota que cruze dois tipos, e é de propósito: as bases são
+ * separadas e não há JOIN possível entre elas.
+ */
+
+const express = require('express');
+const router = express.Router();
+
+const { router: permissoesRouter, exigirAcesso } = require('./permissoes');
+
+// ─── /permissoes: aberto, diz ao cliente se ele tem acesso ─
+// Fica ANTES do gate de propósito: é o endpoint que os ecrãs consultam para
+// saber o que mostrar, e a resposta a quem não tem acesso é `canView: false`,
+// não um 403 que o browser não consegue explicar ao utilizador.
+router.use('/permissoes', permissoesRouter);
+
+// ─── Gate de VER: tudo o que vem a seguir ──────────────────
+router.use(exigirAcesso);
+
+// ─── Um router por tipo de equipamento ─────────────────────
+router.use('/radios', require('./radios'));
+router.use('/telemoveis', require('./telemoveis'));
+
+module.exports = router;

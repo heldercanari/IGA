@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telemóveis · Inventário e Gestão de Ativos</title>
+    <link rel="icon" type="image/png" href="/ativos/favicon.png">
+    <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
+         aplica quando corre. Adiado para depois do parse, o browser chega a pintar
+         a página em cru. O ficheiro é local, não vem de CDN nenhum. O lucide fica
+         adiado — é só ícones, e o script de baixo já espera por ele. -->
+    <script src="/ativos/tailwind.global.js"></script>
+    <script src="/ativos/lucide.min.js" defer></script>
+    <style>
+        /* `hidden` é uma classe do Tailwind, portanto só existe depois de ele
+           compilar. Declará-la aqui garante que os modais e o toast não aparecem
+           empilhados na fracção de segundo anterior. */
+        .hidden { display: none; }
+
+        body, input, select, textarea, button {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        thead.pegajoso th { position: sticky; top: 0; z-index: 10; }
+        tbody tr { line-height: 1.3; }
+        .accao {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 6px; border: none;
+            background: transparent; cursor: pointer; flex-shrink: 0;
+            transition: background-color .15s, transform .1s;
+        }
+        .accao:hover { transform: scale(1.12); }
+        .accao:disabled { opacity: .25; cursor: not-allowed; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded">Saltar para o conteúdo</a>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite" class="fixed top-5 right-5 z-50 hidden items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white" style="min-width:260px">
+    <span id="toastIcone" aria-hidden="true"></span>
+    <span id="toastMsg"></span>
+</div>
+
+<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <img src="/ativos/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+    </div>
+</div>
+
+<div id="app" class="max-w-[1400px] mx-auto p-6">
+
+    <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center gap-4">
+            <img src="/ativos/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900">Inventário e Gestão de Ativos</h1>
+                <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
+            </div>
+        </div>
+        <div class="text-right flex flex-col items-end gap-1">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                Utilizador: <span id="nomeUtilizador">a carregar…</span>
+            </span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+        </div>
+    </header>
+
+    <!-- Navegação entre as páginas do módulo.
+         Cada tipo de equipamento tem a SUA página, independente das outras. Ao
+         acrescentar uma (computadores, viaturas…), esta lista tem de ser
+         actualizada em todas as páginas — é o preço de serem independentes, e é
+         o sítio onde se dá por isso primeiro. -->
+    <nav aria-label="Equipamentos" class="flex gap-2 mb-6 overflow-x-auto">
+        <a href="/radios.html"
+           class="px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap bg-white text-slate-600 border border-slate-300 hover:border-slate-400 hover:text-slate-800">Rádios</a>
+        <a href="/telemoveis.html" aria-current="page"
+           class="px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap bg-slate-800 text-white">Telemóveis</a>
+    </nav>
+
+    <!-- Cartões de contagem -->
+    <section aria-label="Resumo dos telemóveis" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <button type="button" data-estado="" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Telemóveis</p>
+            <p id="kpiTotal" class="text-2xl font-extrabold text-slate-900">—</p>
+        </button>
+        <button type="button" data-estado="atribuido" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Entregues</p>
+            <p id="kpiAtribuidos" class="text-2xl font-extrabold text-blue-700">—</p>
+        </button>
+        <button type="button" data-estado="disponivel" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Disponíveis</p>
+            <p id="kpiDisponiveis" class="text-2xl font-extrabold text-emerald-700">—</p>
+        </button>
+        <button type="button" data-estado="avariado" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Avariados</p>
+            <p id="kpiAvariados" class="text-2xl font-extrabold text-amber-700">—</p>
+        </button>
+        <button type="button" data-estado="abatido" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Abatidos</p>
+            <p id="kpiAbatidos" class="text-2xl font-extrabold text-slate-600">—</p>
+        </button>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Sem cartão</p>
+            <p id="kpiSemCartao" class="text-2xl font-extrabold text-slate-600">—</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">de origem, não é erro</p>
+        </div>
+    </section>
+
+    <main id="conteudo">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+            <div class="flex-1 min-w-[240px]">
+                <label for="procura" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
+                <input id="procura" type="search" placeholder="Número, IMEI, modelo, serviço ou quem o tem…"
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="filtroEstado" class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
+                <select id="filtroEstado" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todos</option>
+                    <option value="atribuido">Entregues</option>
+                    <option value="disponivel">Disponíveis</option>
+                    <option value="avariado">Avariados</option>
+                    <option value="abatido">Abatidos</option>
+                </select>
+            </div>
+            <button id="btnNovo" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+                + Novo telemóvel
+            </button>
+            <button id="btnExportar" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                Exportar CSV
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                        <tr>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Número</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">IMEI</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Equipamento</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Estado</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Quem o tem</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Entregue</th>
+                            <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+            <p id="rodape" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+        </div>
+    </main>
+</div>
+
+<!-- ─── Painel de detalhe ─────────────────────────────────── -->
+<div id="painel" class="hidden fixed inset-0 z-40 flex justify-end">
+    <div class="absolute inset-0 bg-slate-900/40" data-fechar></div>
+    <aside role="dialog" aria-modal="true" aria-labelledby="painelTitulo"
+           class="relative bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl">
+        <header class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-start justify-between gap-4">
+            <div>
+                <h2 id="painelTitulo" class="text-lg font-extrabold text-slate-900">Telemóvel</h2>
+                <p id="painelSubtitulo" class="text-xs text-slate-500"></p>
+            </div>
+            <button data-fechar class="accao text-slate-500 hover:bg-slate-100" aria-label="Fechar">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </header>
+        <div id="painelCorpo" class="p-6 space-y-6"></div>
+    </aside>
+</div>
+
+<!-- ─── Modal de formulário ───────────────────────────────── -->
+<div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-slate-900/50" data-fechar-modal></div>
+    <div role="dialog" aria-modal="true" aria-labelledby="modalTitulo"
+         class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <header class="px-6 py-4 border-b border-slate-200">
+            <h2 id="modalTitulo" class="text-base font-extrabold text-slate-900"></h2>
+            <p id="modalAjuda" class="text-xs text-slate-500 mt-0.5"></p>
+        </header>
+        <form id="modalForm" class="p-6 space-y-4"></form>
+        <footer class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-2xl">
+            <button type="button" data-fechar-modal class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancelar</button>
+            <button type="submit" form="modalForm" id="modalGravar" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Gravar</button>
+        </footer>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+const API = '/api/ativos/telemoveis';   // as rotas deste ecrã
+const API_MODULO = '/api/ativos';       // /permissoes é do módulo, não do tipo
+
+const estado = {
+  permissoes: null,
+  telemoveis: [],
+  filtros: { q: '', estado: '' },
+  aberto: null,
+};
+
+// ─── Utilitários ───────────────────────────────────────────
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/**
+ * Datas em dd/mm/aaaa, lidas em UTC.
+ *
+ * A base guarda DATE e o SQL Server devolve-a como meia-noite UTC. Ler as
+ * componentes locais fazia a data recuar um dia em qualquer fuso a oeste de
+ * Lisboa — e a intranet é consultada de casa.
+ */
+function dataPt(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return esc(v);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+let toastTimer = null;
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  const cor = tipo === 'erro' ? 'bg-red-600' : tipo === 'aviso' ? 'bg-amber-600' : 'bg-emerald-600';
+  el.className = `fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white ${cor}`;
+  document.getElementById('toastIcone').innerHTML =
+    `<i data-lucide="${tipo === 'erro' ? 'alert-circle' : tipo === 'aviso' ? 'alert-triangle' : 'check-circle'}" class="w-5 h-5"></i>`;
+  document.getElementById('toastMsg').textContent = msg;
+  if (window.lucide) lucide.createIcons();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+async function pedir(caminho, opcoes, base) {
+  const r = await fetch((base || API) + caminho, Object.assign({ headers: { 'Accept': 'application/json' } }, opcoes));
+  let corpo = null;
+  try { corpo = await r.json(); } catch (e) { /* resposta sem JSON */ }
+  if (!r.ok) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+  return corpo;
+}
+
+function enviar(caminho, dados, metodo) {
+  return pedir(caminho, {
+    method: metodo || 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(dados || {}),
+  });
+}
+
+const ESTADOS = {
+  atribuido:  { texto: 'Entregue',   classe: 'bg-blue-100 text-blue-800' },
+  disponivel: { texto: 'Disponível', classe: 'bg-emerald-100 text-emerald-800' },
+  avariado:   { texto: 'Avariado',   classe: 'bg-amber-100 text-amber-800' },
+  abatido:    { texto: 'Abatido',    classe: 'bg-slate-200 text-slate-700' },
+};
+
+function etiqueta(chave) {
+  const e = ESTADOS[chave] || { texto: chave || '—', classe: 'bg-slate-100 text-slate-600' };
+  return `<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${e.classe}">${esc(e.texto)}</span>`;
+}
+
+function linhaCampo(rotulo, valor) {
+  return `<div>
+    <dt class="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">${esc(rotulo)}</dt>
+    <dd class="text-sm text-slate-800">${valor || '<span class="text-slate-300">—</span>'}</dd>
+  </div>`;
+}
+
+// ─── Listagem ──────────────────────────────────────────────
+
+async function carregar() {
+  const p = new URLSearchParams();
+  if (estado.filtros.q) p.set('q', estado.filtros.q);
+  if (estado.filtros.estado) p.set('estado', estado.filtros.estado);
+  estado.telemoveis = await pedir('/?' + p.toString());
+  desenhar();
+}
+
+function desenhar() {
+  const podeEditar = estado.permissoes && estado.permissoes.canEdit;
+  const podeAdmin = estado.permissoes && estado.permissoes.canAdmin;
+  const corpo = document.getElementById('tabela');
+
+  if (!estado.telemoveis.length) {
+    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">
+      Nenhum telemóvel encontrado com estes filtros.</td></tr>`;
+    document.getElementById('rodape').textContent = '';
+    return;
+  }
+
+  corpo.innerHTML = estado.telemoveis.map(t => {
+    const entregue = t.matricula || t.nome_utilizador
+      ? `${esc(t.nome_utilizador || '—')}${t.matricula ? ` <span class="text-slate-400">· ${esc(t.matricula)}</span>` : ''}`
+      : '<span class="text-slate-300">—</span>';
+    const avaria = t.avaria_id
+      ? `<div class="text-[11px] text-amber-700 mt-0.5">${esc(t.avaria_descricao || 'avaria por classificar')}</div>` : '';
+    return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 font-bold text-slate-900">${t.numero ? esc(t.numero) : '<span class="text-slate-300 font-normal">sem cartão</span>'}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${t.imei1 ? esc(t.imei1) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2">
+        <div class="text-slate-800">${esc(t.marca || '—')} <span class="text-slate-500">${esc(t.modelo || '')}</span></div>
+        ${t.localizacao ? `<div class="text-[11px] text-slate-400">${esc(t.localizacao)}</div>` : ''}
+      </td>
+      <td class="px-3 py-2">${etiqueta(t.estado)}${avaria}</td>
+      <td class="px-3 py-2">${entregue}</td>
+      <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${t.data_entrega ? dataPt(t.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">
+        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${t.id}" title="Ver detalhe" aria-label="Ver detalhe do telemóvel ${esc(t.numero || t.imei1 || '')}">
+          <i data-lucide="eye" class="w-4 h-4"></i></button>
+        <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${t.id}" title="Entregar" ${podeEditar && t.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="user-plus" class="w-4 h-4"></i></button>
+        <button class="accao text-emerald-600 hover:bg-emerald-50" data-devolver="${t.id}" title="Devolver" ${podeEditar && t.atribuicao_id ? '' : 'disabled'}>
+          <i data-lucide="undo-2" class="w-4 h-4"></i></button>
+        <button class="accao text-amber-600 hover:bg-amber-50" data-avaria="${t.id}" title="Registar avaria" ${podeEditar && t.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="wrench" class="w-4 h-4"></i></button>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-abate="${t.id}" title="Abater" ${podeAdmin && t.estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="archive" class="w-4 h-4"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rodape').textContent =
+    `${estado.telemoveis.length} ${estado.telemoveis.length === 1 ? 'telemóvel' : 'telemóveis'}` +
+    (estado.filtros.q || estado.filtros.estado ? ' (filtrado)' : '');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function carregarEstatisticas() {
+  const e = await pedir('/estatisticas');
+  document.getElementById('kpiTotal').textContent = e.total;
+  document.getElementById('kpiAtribuidos').textContent = e.atribuidos;
+  document.getElementById('kpiDisponiveis').textContent = e.disponiveis;
+  document.getElementById('kpiAvariados').textContent = e.avariados;
+  document.getElementById('kpiAbatidos').textContent = e.abatidos;
+  document.getElementById('kpiSemCartao').textContent = e.sem_numero;
+}
+
+// ─── Detalhe ───────────────────────────────────────────────
+
+/**
+ * As credenciais não vêm nesta resposta: são um pedido à parte, feito só quando
+ * alguém carrega em "mostrar", e só a administração o consegue fazer.
+ */
+async function abrirDetalhe(id) {
+  const t = await pedir('/' + id);
+  estado.aberto = t;
+
+  document.getElementById('painelTitulo').textContent = t.numero ? `Telemóvel ${t.numero}` : 'Telemóvel sem cartão';
+  document.getElementById('painelSubtitulo').textContent =
+    `${t.marca || ''} ${t.modelo || ''} · IMEI ${t.imei1 || '—'}`;
+
+  const atribuicoes = t.atribuicoes.length ? t.atribuicoes.map(a => `
+    <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
+      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.data_devolucao ? 'bg-slate-300' : 'bg-blue-500'}"></span>
+      <div class="text-sm">
+        <div class="font-semibold text-slate-800">${esc(a.nome_utilizador || 'sem nome')}
+          ${a.matricula ? `<span class="text-slate-400 font-normal">· ${esc(a.matricula)}</span>` : ''}</div>
+        <div class="text-xs text-slate-500">
+          ${dataPt(a.data_entrega)} → ${a.data_devolucao ? dataPt(a.data_devolucao) : '<span class="text-blue-600 font-semibold">ainda o tem</span>'}
+        </div>
+        ${a.obs ? `<div class="text-xs text-slate-400 mt-0.5">${esc(a.obs)}</div>` : ''}
+      </div>
+    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Nunca foi entregue.</li>';
+
+  const avarias = t.avarias.length ? t.avarias.map(a => `
+    <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
+      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.estado === 'aberta' ? 'bg-amber-500' : 'bg-slate-300'}"></span>
+      <div class="text-sm flex-1">
+        <div class="font-semibold text-slate-800">${esc(a.descricao || 'por classificar')}</div>
+        <div class="text-xs text-slate-500">
+          ${a.estado === 'aberta' ? `aberta ${a.data_registo ? 'desde ' + dataPt(a.data_registo) : 'sem data'}`
+                                  : `${a.estado === 'reparada' ? 'reparada' : 'irreparável'} em ${dataPt(a.data_reparacao)}`}
+        </div>
+      </div>
+      ${a.estado === 'aberta' && estado.permissoes.canEdit
+        ? `<button class="text-xs font-semibold text-emerald-700 hover:underline" data-reparar="${a.id}">Fechar</button>` : ''}
+    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Sem avarias registadas.</li>';
+
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex items-center gap-2 mb-3">
+        ${etiqueta(t.estado)}
+        ${estado.permissoes.canEdit ? '<button id="btnEditar" class="ml-auto text-xs font-semibold text-blue-600 hover:underline">Editar equipamento</button>' : ''}
+      </div>
+      <dl class="grid grid-cols-2 gap-3">
+        ${linhaCampo('Número', esc(t.numero))}
+        ${linhaCampo('Serviço', esc(t.localizacao))}
+        ${linhaCampo('IMEI 1', t.imei1 ? `<span class="font-mono text-xs">${esc(t.imei1)}</span>` : '')}
+        ${linhaCampo('IMEI 2', t.imei2 ? `<span class="font-mono text-xs">${esc(t.imei2)}</span>` : '')}
+        ${linhaCampo('Marca / modelo', `${esc(t.marca || '')} ${esc(t.modelo || '')}`.trim())}
+      </dl>
+      ${t.obs ? `<p class="mt-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3">${esc(t.obs)}</p>` : ''}
+    </section>
+
+    <section class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Cartão e conta</h3>
+      <div id="zonaCredenciais">
+        ${estado.permissoes.canAdmin
+          ? `<p class="text-xs text-slate-500 mb-2">PIN, PUK e conta do aparelho. A leitura fica registada no log.</p>
+             <button id="btnCredenciais" class="text-xs font-semibold text-blue-600 hover:underline">Mostrar credenciais</button>`
+          : '<p class="text-sm text-slate-400">Reservado ao grupo Ativos-Admin.</p>'}
+      </div>
+    </section>
+
+    ${t.abate ? `<section class="bg-slate-100 border border-slate-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Abatido${t.abate.data_abate ? ' em ' + dataPt(t.abate.data_abate) : ''}</h3>
+      <p class="text-sm text-slate-600">${esc(t.abate.motivo || 'sem motivo registado')}</p>
+      ${estado.permissoes.canAdmin ? '<button id="btnAnularAbate" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Anular abate</button>' : ''}
+    </section>` : ''}
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Entregas</h3>
+      <ul>${atribuicoes}</ul>
+    </section>
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Avarias</h3>
+      <ul>${avarias}</ul>
+    </section>`;
+
+  document.getElementById('painel').classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+function fecharPainel() {
+  document.getElementById('painel').classList.add('hidden');
+  estado.aberto = null;
+}
+
+/** Vai buscar as credenciais e mostra-as no lugar do botão. */
+async function mostrarCredenciais(id) {
+  const c = await pedir(`/${id}/credenciais`);
+  document.getElementById('zonaCredenciais').innerHTML = `
+    <dl class="grid grid-cols-2 gap-3">
+      ${linhaCampo('PIN', c.pin ? `<span class="font-mono">${esc(c.pin)}</span>` : '')}
+      ${linhaCampo('PUK', c.puk ? `<span class="font-mono">${esc(c.puk)}</span>` : '')}
+      ${linhaCampo('Utilizador', c.utilizador ? `<span class="font-mono">${esc(c.utilizador)}</span>` : '')}
+      ${linhaCampo('Palavra passe', c.palavra_passe ? `<span class="font-mono">${esc(c.palavra_passe)}</span>` : '')}
+    </dl>
+    ${c.pin_curto ? `<p class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+      Este PIN tem menos de 4 dígitos: na folha de origem era um número e o Excel comeu os zeros à
+      esquerda. Confirma no cartão antes de o usar — dez tentativas erradas pedem o PUK.</p>` : ''}`;
+}
+
+// ─── Modais ────────────────────────────────────────────────
+
+let submeterModal = null;
+
+function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalAjuda').textContent = ajuda || '';
+  document.getElementById('modalGravar').textContent = textoGravar || 'Gravar';
+  document.getElementById('modalForm').innerHTML = campos.map(c => {
+    const base = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+    const controlo = c.tipo === 'textarea'
+      ? `<textarea id="c_${c.nome}" name="${c.nome}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`
+      : c.tipo === 'select'
+        ? `<select id="c_${c.nome}" name="${c.nome}" class="${base}">${c.opcoes.map(o =>
+            `<option value="${esc(o.valor)}" ${o.valor === c.valor ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}</select>`
+        : `<input id="c_${c.nome}" name="${c.nome}" type="${c.tipo || 'text'}" value="${esc(c.valor || '')}"
+             ${c.lista ? `list="${c.lista}"` : ''} ${c.obrigatorio ? 'required' : ''}
+             placeholder="${esc(c.dica || '')}" class="${base}">`;
+    return `<div>
+      <label for="c_${c.nome}" class="block text-xs font-semibold text-slate-600 mb-1">${esc(c.rotulo)}</label>
+      ${controlo}
+      ${c.nota ? `<p class="text-[11px] text-slate-400 mt-1">${esc(c.nota)}</p>` : ''}
+    </div>`;
+  }).join('') + '<datalist id="listaPessoas"></datalist>';
+
+  submeterModal = gravar;
+  document.getElementById('modal').classList.remove('hidden');
+  const primeiro = document.querySelector('#modalForm input, #modalForm select, #modalForm textarea');
+  if (primeiro) primeiro.focus();
+}
+
+function fecharModal() {
+  document.getElementById('modal').classList.add('hidden');
+  submeterModal = null;
+}
+
+function dadosDoModal() {
+  const dados = {};
+  new FormData(document.getElementById('modalForm')).forEach((v, k) => { dados[k] = String(v).trim(); });
+  return dados;
+}
+
+/** Recarrega o que está à vista depois de uma alteração. */
+async function refrescar(idDetalhe) {
+  await Promise.all([carregar(), carregarEstatisticas()]);
+  if (idDetalhe) await abrirDetalhe(idDetalhe);
+}
+
+function aparelho(id) {
+  return estado.telemoveis.find(t => t.id === id) || estado.aberto || {};
+}
+
+function modalEntregar(id) {
+  const t = aparelho(id);
+  abrirModal({
+    titulo: `Entregar o telemóvel ${t.numero || ''}`.trim(),
+    ajuda: t.atribuicao_id ? `Está entregue a ${t.nome_utilizador || 'alguém'} — essa entrega é fechada nesta data.` : '',
+    campos: [
+      { nome: 'matricula', rotulo: 'Matrícula', tipo: 'text', lista: 'listaPessoas', dica: '138415' },
+      { nome: 'nome_utilizador', rotulo: 'Nome', tipo: 'text', dica: 'Nome de quem fica com o telemóvel' },
+      { nome: 'data_entrega', rotulo: 'Data de entrega', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Entregar',
+    gravar: async d => {
+      await enviar(`/${id}/atribuir`, d);
+      toast('Entrega registada.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+  carregarPessoas();
+}
+
+/**
+ * O autocompletar de pessoas vem do módulo dos rádios: é lá que está a lista do
+ * questionário, com 405 matrículas e nomes. É o único sítio onde este ecrã fala
+ * com o outro tipo, e é só de leitura.
+ */
+async function carregarPessoas() {
+  try {
+    const pessoas = await pedir('/utilizadores', null, API_MODULO + '/radios');
+    const lista = document.getElementById('listaPessoas');
+    if (lista) lista.innerHTML = pessoas.map(p =>
+      `<option value="${esc(p.matricula)}">${esc(p.nome || '')}</option>`).join('');
+  } catch (e) { /* o autocompletar é um extra: sem ele o campo continua a funcionar */ }
+}
+
+function modalDevolver(id) {
+  const t = aparelho(id);
+  abrirModal({
+    titulo: `Devolver o telemóvel ${t.numero || ''}`.trim(),
+    ajuda: t.nome_utilizador ? `Entregue a ${t.nome_utilizador}.` : '',
+    campos: [
+      { nome: 'data_devolucao', rotulo: 'Data de devolução', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', dica: 'Estado em que veio, por exemplo' },
+    ],
+    textoGravar: 'Devolver',
+    gravar: async d => {
+      await enviar(`/${id}/devolver`, d);
+      toast('Devolução registada.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+}
+
+function modalAvaria(id) {
+  const t = aparelho(id);
+  abrirModal({
+    titulo: `Registar avaria no telemóvel ${t.numero || ''}`.trim(),
+    campos: [
+      { nome: 'descricao', rotulo: 'Avaria', tipo: 'text', obrigatorio: true, dica: 'Ecrã partido, não liga, software danificado…' },
+      { nome: 'data_registo', rotulo: 'Data', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Registar avaria',
+    gravar: async d => {
+      await enviar(`/${id}/avarias`, d);
+      toast('Avaria registada.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+}
+
+function modalReparar(avariaId) {
+  const id = estado.aberto ? estado.aberto.id : null;
+  abrirModal({
+    titulo: 'Fechar a avaria',
+    campos: [
+      { nome: 'estado', rotulo: 'Desfecho', tipo: 'select', valor: 'reparada', opcoes: [
+        { valor: 'reparada', texto: 'Reparada — volta ao parque' },
+        { valor: 'irreparavel', texto: 'Irreparável — fica para abate' },
+      ] },
+      { nome: 'data_reparacao', rotulo: 'Data', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Fechar',
+    gravar: async d => {
+      await enviar(`/avarias/${avariaId}/reparar`, d);
+      toast('Avaria fechada.');
+      await refrescar(id);
+    },
+  });
+}
+
+function modalAbate(id) {
+  const t = aparelho(id);
+  abrirModal({
+    titulo: `Abater o telemóvel ${t.numero || ''}`.trim(),
+    ajuda: 'O telemóvel sai do parque activo mas não é apagado: o histórico fica.',
+    campos: [
+      { nome: 'data_abate', rotulo: 'Data do abate', tipo: 'date', valor: hojeISO() },
+      { nome: 'motivo', rotulo: 'Motivo', tipo: 'text', obrigatorio: true, dica: 'Irreparável, extraviado, fim de vida…' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Abater',
+    gravar: async d => {
+      await enviar(`/${id}/abate`, d);
+      toast('Telemóvel abatido.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+}
+
+function modalEquipamento(t) {
+  const novo = !t;
+  t = t || {};
+  abrirModal({
+    titulo: novo ? 'Novo telemóvel' : `Editar o telemóvel ${t.numero || ''}`.trim(),
+    ajuda: novo ? 'Basta o número do cartão ou o IMEI.'
+                : 'As credenciais editam-se na secção "Cartão e conta", e só pela administração.',
+    campos: [
+      { nome: 'numero', rotulo: 'Número', tipo: 'text', valor: t.numero, dica: '914699022' },
+      { nome: 'imei1', rotulo: 'IMEI 1', tipo: 'text', valor: t.imei1, nota: 'No ficheiro de origem só estão os últimos dígitos.' },
+      { nome: 'imei2', rotulo: 'IMEI 2', tipo: 'text', valor: t.imei2 },
+      { nome: 'marca', rotulo: 'Marca', tipo: 'text', valor: t.marca || 'Motorola' },
+      { nome: 'modelo', rotulo: 'Modelo', tipo: 'text', valor: t.modelo, dica: 'XT1922-3 moto g6 Play' },
+      { nome: 'localizacao', rotulo: 'Serviço', tipo: 'text', valor: t.localizacao, dica: 'NSIC, Com. ET, …' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: t.obs },
+    ],
+    gravar: async d => {
+      if (novo) {
+        const criado = await enviar('/', d);
+        toast('Telemóvel criado.');
+        await refrescar();
+        await abrirDetalhe(criado.id);
+      } else {
+        await enviar('/' + t.id, d, 'PUT');
+        toast('Alterações gravadas.');
+        await refrescar(t.id);
+      }
+    },
+  });
+}
+
+// ─── Exportação ────────────────────────────────────────────
+
+/**
+ * CSV com ponto e vírgula e BOM: é o que o Excel em português abre sem pedir
+ * nada. Com vírgula, o Excel PT junta tudo numa coluna só.
+ *
+ * Sem PIN, PUK nem conta: a listagem que alimenta isto não os traz da API, e é
+ * de propósito que a exportação não os vá buscar — um CSV é a maneira mais fácil
+ * de espalhar 300 credenciais por aí.
+ */
+function exportarCSV() {
+  const colunas = ['numero', 'imei1', 'imei2', 'marca', 'modelo', 'estado', 'localizacao',
+                   'matricula', 'nome_utilizador', 'data_entrega', 'avaria_descricao', 'obs'];
+  const celula = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v).replace(/"/g, '""');
+    return /[";\n]/.test(s) ? `"${s}"` : s;
+  };
+  const linhas = [colunas.join(';')].concat(estado.telemoveis.map(t =>
+    colunas.map(c => celula(c === 'data_entrega' && t[c] ? dataPt(t[c]) : t[c])).join(';')));
+  const url = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `telemoveis_${hojeISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Ligações ──────────────────────────────────────────────
+
+let temporizadorProcura = null;
+function procuraAdiada(fn) {
+  clearTimeout(temporizadorProcura);
+  temporizadorProcura = setTimeout(fn, 250);
+}
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-abate],[data-reparar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnAnularAbate,#btnCredenciais,#btnNovo,#btnExportar');
+  if (!alvo) return;
+  const d = alvo.dataset;
+  try {
+    if (alvo.matches('[data-fechar]')) return fecharPainel();
+    if (alvo.matches('[data-fechar-modal]')) return fecharModal();
+    if (alvo.id === 'btnExportar') return exportarCSV();
+    if (alvo.id === 'btnNovo') return modalEquipamento(null);
+    if (alvo.id === 'btnEditar') return modalEquipamento(estado.aberto);
+    if (alvo.id === 'btnCredenciais') return mostrarCredenciais(estado.aberto.id);
+    if (alvo.id === 'btnAnularAbate') {
+      if (!confirm('Anular o abate e devolver o telemóvel ao parque?')) return;
+      await pedir(`/${estado.aberto.id}/abate`, { method: 'DELETE' });
+      toast('Abate anulado.');
+      return refrescar(estado.aberto.id);
+    }
+    if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
+    if (d.entregar) return modalEntregar(Number(d.entregar));
+    if (d.devolver) return modalDevolver(Number(d.devolver));
+    if (d.avaria) return modalAvaria(Number(d.avaria));
+    if (d.abate) return modalAbate(Number(d.abate));
+    if (d.reparar) return modalReparar(Number(d.reparar));
+    if (d.estado !== undefined && alvo.classList.contains('cartao')) {
+      estado.filtros.estado = d.estado;
+      document.getElementById('filtroEstado').value = d.estado;
+      return carregar();
+    }
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+});
+
+document.getElementById('modalForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!submeterModal) return;
+  const botao = document.getElementById('modalGravar');
+  botao.disabled = true;
+  try {
+    await submeterModal(dadosDoModal());
+    fecharModal();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+document.getElementById('procura').addEventListener('input', ev => {
+  estado.filtros.q = ev.target.value.trim();
+  procuraAdiada(() => carregar().catch(e => toast(e.message, 'erro')));
+});
+document.getElementById('filtroEstado').addEventListener('change', ev => {
+  estado.filtros.estado = ev.target.value;
+  carregar().catch(e => toast(e.message, 'erro'));
+});
+
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (!document.getElementById('modal').classList.contains('hidden')) return fecharModal();
+  if (!document.getElementById('painel').classList.contains('hidden')) return fecharPainel();
+});
+
+// ─── Arranque ──────────────────────────────────────────────
+
+function mostrarErro(titulo, detalhe) {
+  document.getElementById('erroTitulo').textContent = titulo;
+  document.getElementById('erroDetalhe').textContent = detalhe || '';
+  document.getElementById('ecraErro').classList.remove('hidden');
+}
+
+async function arrancar() {
+  try {
+    estado.permissoes = await pedir('/permissoes', null, API_MODULO);
+  } catch (err) {
+    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+  }
+  if (!estado.permissoes.canView) {
+    return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
+      'Pede para te adicionarem ao grupo "Ativos" (ou "Ativos-Consulta" para consulta).');
+  }
+
+  document.getElementById('nomeUtilizador').textContent =
+    estado.permissoes.nome || estado.permissoes.username || '—';
+  document.getElementById('etiquetaAcesso').textContent =
+    estado.permissoes.canAdmin ? 'Administração' : estado.permissoes.canEdit ? 'Escrita' : 'Só consulta';
+  if (estado.permissoes.canEdit) document.getElementById('btnNovo').classList.remove('hidden');
+
+  try {
+    await Promise.all([carregarEstatisticas(), carregar()]);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+arrancar();
+</script>
+</body>
+</html>

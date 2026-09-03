@@ -11,8 +11,14 @@ Dois tipos de activo, um separador para cada:
 > Este repositório é **um módulo destacado**, não um projecto autónomo — mesmo molde do
 > `correspondencia-pm`. A casa a sério do código é o repositório da intranet; aqui está só o
 > módulo dos rádios, com o mínimo à volta para arrancar. Os caminhos
-> (`server/routes/radios/…`, `public/radios.html`) são os mesmos da intranet de propósito,
+> (`server/routes/ativos/…`, `public/<tipo>.html`) são os mesmos da intranet de propósito,
 > para a cópia ser ficheiro-a-ficheiro.
+
+**Uma página por tipo de equipamento**, independente das outras: `public/radios.html` e
+`public/telemoveis.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
+abertos: cada página é dona do seu ecrã, e em troca uma correcção de comportamento tem de ser
+repetida em todas. A secção *[Acrescentar um tipo de equipamento](#acrescentar-um-tipo-de-equipamento)*
+diz o que é preciso tocar.
 
 ## Montar
 
@@ -91,7 +97,7 @@ O primeiro procura o `Radios apanhado.xlsx` no OneDrive da CML; o segundo lê o
 esvazia antes de importar (só para desenvolvimento: apaga o que foi registado pelo ecrã):
 
 ```bash
-npm run importar -- "C:\caminho\Radios apanhado.xlsx"
+npm run importar-radios -- "C:\caminho\Radios apanhado.xlsx"
 ```
 
 Podem correr as vezes que forem precisas — os rádios são procurados por número de série e, na
@@ -108,7 +114,8 @@ na folha (há uma).
 npm run harness
 ```
 
-→ <http://localhost:3943/radios.html>
+- Rádios → <http://localhost:3943/radios.html>
+- Telemóveis → <http://localhost:3943/telemoveis.html>
 
 O harness serve `public/` e monta o router com um utilizador injectado, no lugar do SSPI.
 `ATOR` escolhe quem se está a fingir:
@@ -117,7 +124,7 @@ O harness serve `public/` e monta o router com um utilizador injectado, no lugar
 |---|---|
 | `helder.canarias` (o que vem por omissão) | escrita + administração |
 | `andreia.r.goncalves` | escrita, sem administração |
-| `sem.acesso` | 403 na página e na API |
+| `sem.acesso` | 403 nas páginas e na API |
 
 ```bash
 ATOR=sem.acesso npm run harness
@@ -149,7 +156,7 @@ parque pelo número de série.
 **Telemóveis** — 300 aparelhos com número, IMEI, serviço e estado, com as mesmas entregas,
 avarias e abates dos rádios. As **credenciais do cartão e da conta** (PIN, PUK, utilizador e
 palavra passe) não aparecem na listagem nem na exportação: só na ficha do aparelho, atrás de
-"mostrar credenciais", e só para quem é `Radios-Admin`. Cada leitura fica no log.
+"mostrar credenciais", e só para quem é `Ativos-Admin`. Cada leitura fica no log.
 
 > ⚠️ Dois avisos sobre as credenciais que vêm do ficheiro de origem: a **palavra passe é
 > derivável do utilizador** nos 300 aparelhos (`pm251ind` → `pm251ind!`), e os **PIN perderam
@@ -158,32 +165,52 @@ palavra passe) não aparecem na listagem nem na exportação: só na ficha do ap
 
 ## API
 
-Tudo debaixo de `/api/radios`. O gate de VER está aplicado ao router inteiro; as mutações
+Tudo debaixo de `/api/ativos`. O gate de VER está aplicado ao router inteiro; as mutações
 levam `exigirEdicao`, e o abate e a remoção `exigirAdmin`.
+
+Cada tipo de equipamento tem o seu router debaixo do seu nome — `/api/ativos/radios/…` e
+`/api/ativos/telemoveis/…` —, e o `/permissoes` é do módulo, comum aos dois.
 
 | Método | Rota | Quem |
 |---|---|---|
 | GET | `/permissoes` | aberto (responde `canView:false`) |
-| GET | `/estatisticas` · `/radios` · `/radios/:id` · `/sistema` · `/conferencia` · `/utilizadores` | ver |
-| POST · PUT | `/radios` · `/radios/:id` | editar |
-| POST | `/radios/:id/atribuir` · `/devolver` · `/avarias` | editar |
-| POST | `/avarias/:id/reparar` | editar |
-| POST · DELETE | `/radios/:id/abate` | administração |
-| DELETE | `/radios/:id` | administração |
-| GET | `/telemoveis` · `/telemoveis/:id` · `/telemoveis/estatisticas` | ver |
-| POST · PUT | `/telemoveis` · `/telemoveis/:id` | editar |
-| POST | `/telemoveis/:id/atribuir` · `/devolver` · `/avarias` | editar |
-| POST | `/telemoveis/avarias/:id/reparar` | editar |
-| GET | `/telemoveis/:id/credenciais` | administração |
-| POST · DELETE | `/telemoveis/:id/abate` · DELETE `/telemoveis/:id` | administração |
+| GET | `<tipo>/` · `<tipo>/:id` · `<tipo>/estatisticas` | ver |
+| POST · PUT | `<tipo>/` · `<tipo>/:id` | editar |
+| POST | `<tipo>/:id/atribuir` · `/devolver` · `/avarias` | editar |
+| POST | `<tipo>/avarias/:id/reparar` | editar |
+| POST · DELETE | `<tipo>/:id/abate` | administração |
+| DELETE | `<tipo>/:id` | administração |
+| GET | `radios/sistema` · `radios/conferencia` · `radios/utilizadores` | ver (só rádios) |
+| GET | `telemoveis/:id/credenciais` | administração (só telemóveis) |
+
+## Acrescentar um tipo de equipamento
+
+Cada tipo é uma página e um router próprios. Para juntar, por exemplo, computadores:
+
+1. **Migração** — `migrations/00N_computadores.sql`, no molde da `002`: a tabela do
+   equipamento mais `_atribuicoes`, `_avarias` e `_abates`. Base própria ou a de um dos
+   outros: é só uma variável no `.env` e uma pool.
+2. **Rotas** — `server/routes/ativos/computadores.js`, no molde do `telemoveis.js`, e uma
+   linha no `index.js`: `router.use('/computadores', require('./computadores'))`.
+3. **Importador**, se houver ficheiro de origem — `scripts/importar_computadores.js` e um
+   `npm run` no `package.json`.
+4. **Página** — `public/computadores.html`. O ponto de partida é o `telemoveis.html`, que é o
+   mais simples dos dois.
+5. ⚠️ **A navegação entre páginas muda em TODAS as páginas** — a lista de ligações no topo
+   está escrita em cada uma. É o preço de as páginas serem independentes, e é aqui que se
+   costuma dar por isso tarde.
+6. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-ativos.js`. Na intranet, a página
+   entra no `server/index.js` de lá, gated por `exigirAcesso`.
+
+Os grupos de acesso **não mudam**: são do módulo, valem para todos os tipos.
 
 ## Grupos de acesso
 
 | Grupo | Pode |
 |---|---|
-| `Radios` | ver + registar/editar |
-| `Radios-Consulta` | só ver |
-| `Radios-Admin` | + importar, abater e apagar |
+| `Ativos` | ver + registar/editar |
+| `Ativos-Consulta` | só ver |
+| `Ativos-Admin` | + importar, abater e apagar |
 
 A gestão é pela consola AD-PM, como qualquer outro grupo. O administrador da consola
 (`admin_users`) entra em tudo **excepto** na administração do módulo — essa é só do grupo.

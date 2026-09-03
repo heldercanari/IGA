@@ -41,21 +41,21 @@ se descobre a ler o código, e o que já correu mal antes.
   `.env` — sem tocar numa linha de SQL.
 - Pela mesma razão **não há consultas que cruzem os dois tipos de activo**. Uma pessoa com um
   rádio e um telemóvel aparece nas duas listas, e não há JOIN possível entre elas.
-- As rotas dos telemóveis estão em `server/routes/radios/telemoveis.js` **porque falam com a
+- As rotas dos telemóveis estão em `server/routes/ativos/telemoveis.js` **porque falam com a
   outra pool**, não por serem outro módulo: montam dentro do mesmo router e usam os mesmos
   grupos de acesso.
-- O que os dois tipos partilham vive em `server/routes/radios/comum.js` (leitura de campos e
+- O que os dois tipos partilham vive em `server/routes/ativos/comum.js` (leitura de campos e
   datas). O recálculo do estado **não** está lá de propósito: conhece as tabelas de cada tipo.
 
 ## Base de dados
 
 - **O alvo é SQL Server.** Não escrevas SQL a tentar ser portável, nem introduzas abstracções
   para isso.
-- **`radios.estado` é uma coluna, não uma consulta** — e quem a escreve é `recalcularEstado()`
-  em `server/routes/radios/index.js`. Qualquer coisa que mexa em atribuições, avarias ou abates
-  tem de a chamar a seguir; **SQL escrito à mão que apague uma dessas linhas deixa o estado
-  desalinhado** (o `README` tem o UPDATE que repõe tudo). A precedência é
-  abatido > avariado > atribuído > disponível.
+- **O `estado` é uma coluna, não uma consulta** — e quem o escreve é o `recalcularEstado()` de
+  cada tipo (`radios.js` e `telemoveis.js` têm o seu, porque conhecem as suas tabelas).
+  Qualquer coisa que mexa em atribuições, avarias ou abates tem de o chamar a seguir; **SQL
+  escrito à mão que apague uma dessas linhas deixa o estado desalinhado** (o `README` tem o
+  UPDATE que repõe tudo). A precedência é abatido > avariado > atribuído > disponível.
 - **Ao contrário da correspondência, aqui as datas são `DATE` a sério.** A origem trazia datas
   do Excel, não texto; a excepção é a folha `Quest`, cujas datas vêm em texto "17-Oct-25" e são
   convertidas na importação, com o cru guardado ao lado em `data_resposta_texto`.
@@ -71,7 +71,7 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
 - ⚠️ **As linhas de nota estão em células unidas**, e o `exceljs` devolve o texto da união em
   TODAS as células dela. "Existem mais 7 rádios Secura 2120 sem número" entrava como um rádio
   cujo indicativo, marca, modelo e utilizador eram essa frase. É o que `identidade()` em
-  `scripts/importar_xlsx.js` filtra — e as frases vão para `resumo.notas`, que é impresso no
+  `scripts/importar_radios.js` filtra — e as frases vão para `resumo.notas`, que é impresso no
   fim: são 39 rádios reais que o ficheiro conta mas não lista.
 - **Três linhas têm uma linha da exportação TEI colada a partir da coluna K.** Só se lêem as
   colunas A..J. Uma delas trouxe também o alias para a coluna do indicativo — daí o
@@ -111,17 +111,34 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
 - **Não acrescentes autenticação.** A identidade vem do Windows (SSPI) na intranet e é injectada
   pelo harness em desenvolvimento.
 - Nunca leias `x-remote-user` directamente — só `req.user`.
-- `canAdmin` é só do grupo `Radios-Admin`: ser administrador da consola AD-PM **não** abre o
+- `canAdmin` é só do grupo `Ativos-Admin`: ser administrador da consola AD-PM **não** abre o
   abate. É de propósito — senão, desactivar alguém no grupo não tinha efeito nenhum.
+
+## Uma página por tipo de equipamento
+
+- **`public/radios.html` e `public/telemoveis.html` são independentes, e é deliberado.** Não
+  há motor partilhado entre elas, nem separadores dentro de uma página: cada tipo tem o seu
+  ecrã, e o próximo equipamento será outra página. Foi decidido assim com o custo à vista —
+  **não "arrumes" isto para um ficheiro comum** por parecer duplicação; é uma escolha, não um
+  descuido. Se algum dia for para mudar, é conversa a ter, não uma refactorização de passagem.
+- ⚠️ **A navegação do topo está escrita em cada página.** Ao acrescentar um tipo, a lista de
+  ligações muda em TODAS — é o primeiro sítio onde a duplicação morde.
+- O que **é** partilhado, e continua a sê-lo: o servidor (`server/routes/ativos/`, um router
+  por tipo montado no `index.js`), as permissões, e os assets em `public/ativos/`.
+- O passo a passo para juntar um tipo novo está no README, secção *Acrescentar um tipo de
+  equipamento*.
 
 ## Ao mexer no código
 
-- **Não há build.** A página é HTML, CSS e JavaScript num ficheiro só, servido directamente:
-  guardar e recarregar chega.
-- Alterações em `server/routes/radios/` obrigam a **reiniciar o harness**. O
+- **Não há build.** Cada página é HTML, CSS e JavaScript num ficheiro só, servido
+  directamente: guardar e recarregar chega.
+- Alterações em `server/routes/ativos/` obrigam a **reiniciar o harness**. O
   `permissoes.js` tem uma cache de 10 minutos por utilizador: depois de mexer em
   `colaboradores` ou nos grupos, reiniciar é a única forma de ver o efeito.
-- O Tailwind e o lucide são **ficheiros locais** em `public/radios/`, não vêm de CDN.
+- ⚠️ **Os `:id` nas rotas levam `(\d+)`.** Sem isso, `GET /:id` apanha também o `/sistema`, o
+  `/conferencia` e o `/utilizadores` — que estão escritos mais abaixo no ficheiro — e a
+  resposta passa a ser um "Identificador inválido" que ninguém percebe.
+- O Tailwind e o lucide são **ficheiros locais** em `public/ativos/`, não vêm de CDN.
 - **O `.env` nunca entra no git.** Variáveis novas documentam-se no `.env.example`, sem valores.
 
 ## Convenções

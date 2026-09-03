@@ -1,12 +1,15 @@
 'use strict';
 
 /**
- * Permissões da Gestão de Rádios — SSPI + grupos AD-PM.
+ * Permissões do Inventário e Gestão de Ativos — SSPI + grupos AD-PM.
+ *
+ * Valem para o módulo inteiro: são as mesmas para os rádios, os telemóveis e o
+ * equipamento que vier a seguir. Quem pode ver rádios pode ver telemóveis.
  *
  * Modelo (espelha `server/routes/correspondencia/permissoes.js`):
- *   VER      → membro activo de 'Radios' OU 'Radios-Consulta' OU 'Radios-Admin'
- *   EDITAR   → membro activo de 'Radios'
- *   ADMIN    → membro activo de 'Radios-Admin'  (importar, abater, apagar)
+ *   VER      → membro activo de 'Ativos' OU 'Ativos-Consulta' OU 'Ativos-Admin'
+ *   EDITAR   → membro activo de 'Ativos'
+ *   ADMIN    → membro activo de 'Ativos-Admin'  (importar, abater, apagar)
  *   Admin da consola AD-PM (admin_users.ativo=1) entra em tudo, EXCEPTO na
  *   administração do módulo: essa é só do grupo (ver `canAdmin` abaixo).
  *
@@ -14,7 +17,7 @@
  * NUNCA ler `x-remote-user` cru: só `req.user`, que o servidor promove apenas
  * quando o pedido vem de um proxy de confiança.
  *
- *   GET /api/radios/permissoes → o objecto de permissões do request
+ *   GET /api/ativos/permissoes → o objecto de permissões do request
  *
  * Ao contrário da correspondência, não há filtro de visibilidade por serviço: um
  * rádio não tem destinatário, e quem entra no módulo vê o parque todo. Por isso
@@ -27,9 +30,9 @@ const express = require('express');
 const router = express.Router();
 const { poolPromise, sql } = require('../../../db');
 
-const GRUPO_EDITAR = 'Radios';
-const GRUPO_CONSULTA = 'Radios-Consulta';
-const GRUPO_ADMIN = 'Radios-Admin';
+const GRUPO_EDITAR = 'Ativos';
+const GRUPO_CONSULTA = 'Ativos-Consulta';
+const GRUPO_ADMIN = 'Ativos-Admin';
 const GRUPOS_ACESSO = [GRUPO_EDITAR, GRUPO_CONSULTA, GRUPO_ADMIN];
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -109,7 +112,7 @@ async function gruposDoColaborador(pool, mecanografico) {
  *
  * `isConsola` e `canAdmin` respondem a perguntas diferentes:
  *   isConsola → administrador da consola AD-PM; abre ver e editar.
- *   canAdmin  → importar, abater e apagar. SÓ membro activo de 'Radios-Admin'.
+ *   canAdmin  → importar, abater e apagar. SÓ membro activo de 'Ativos-Admin'.
  *               Sem esta separação, desactivar alguém no grupo não tinha efeito
  *               nenhum se essa pessoa fosse administradora da consola.
  */
@@ -141,7 +144,7 @@ async function permissoesDoRequest(req) {
     out.canView = out.canEdit || acesso.has(GRUPO_CONSULTA);
     out.canAdmin = acesso.has(GRUPO_ADMIN); // só o grupo — sem atalho pela consola
   } catch (err) {
-    console.error('[radios/permissoes] resolução falhou:', err.message);
+    console.error('[ativos/permissoes] resolução falhou:', err.message);
   }
   return out;
 }
@@ -153,7 +156,7 @@ function negar(req, res, status, message) {
   if (wantsJson) {
     return res.status(status).json({
       error: message,
-      codigo: status === 403 ? 'RADIOS_SEM_ACESSO' : 'RADIOS_NAO_AUTENTICADO',
+      codigo: status === 403 ? 'ATIVOS_SEM_ACESSO' : 'ATIVOS_NAO_AUTENTICADO',
     });
   }
   const titulo = status === 401 ? 'Não autenticado' : 'Acesso reservado';
@@ -162,33 +165,33 @@ function negar(req, res, status, message) {
 <body><div class="box"><h1>${titulo}</h1><p>${message}</p><a href="/index2.html">← Voltar à Intranet</a></div></body></html>`);
 }
 
-/** Resolve as permissões uma vez por pedido e guarda-as em req.radiosUser. */
+/** Resolve as permissões uma vez por pedido e guarda-as em req.ativosUser. */
 async function permissoesDoPedido(req, res) {
-  if (req.radiosUser) return req.radiosUser;
+  if (req.ativosUser) return req.ativosUser;
   try {
-    req.radiosUser = await permissoesDoRequest(req);
+    req.ativosUser = await permissoesDoRequest(req);
   } catch (err) {
-    console.error('[radios/permissoes] middleware falhou:', err.message);
+    console.error('[ativos/permissoes] middleware falhou:', err.message);
     negar(req, res, 500, 'Erro ao verificar permissões.');
     return null;
   }
-  return req.radiosUser;
+  return req.ativosUser;
 }
 
-/** Middleware VER — 401 se não autenticado, 403 sem acesso. Popula req.radiosUser. */
+/** Middleware VER — 401 se não autenticado, 403 sem acesso. Popula req.ativosUser. */
 async function exigirAcesso(req, res, next) {
   const p = await permissoesDoPedido(req, res);
   if (!p) return;
   if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
   if (!p.canView) {
-    return negar(req, res, 403, 'Acesso reservado ao Inventário e Gestão de Ativos. Pede para te adicionarem ao grupo "Radios" (ou "Radios-Consulta" para consulta).');
+    return negar(req, res, 403, 'Acesso reservado ao Inventário e Gestão de Ativos. Pede para te adicionarem ao grupo "Ativos" (ou "Ativos-Consulta" para consulta).');
   }
   next();
 }
 
 /**
  * Middleware EDITAR — aplicado por-rota em TODAS as mutações.
- * Reusa req.radiosUser (o gate de VER corre sempre antes, a nível de router).
+ * Reusa req.ativosUser (o gate de VER corre sempre antes, a nível de router).
  */
 async function exigirEdicao(req, res, next) {
   const p = await permissoesDoPedido(req, res);
@@ -202,7 +205,7 @@ async function exigirEdicao(req, res, next) {
 
 /**
  * Middleware ADMIN — importação, abate e remoção de registos.
- * Testa `canAdmin`, não `isConsola`: a filiação activa em 'Radios-Admin' é a
+ * Testa `canAdmin`, não `isConsola`: a filiação activa em 'Ativos-Admin' é a
  * única chave.
  */
 async function exigirAdmin(req, res, next) {
@@ -210,7 +213,7 @@ async function exigirAdmin(req, res, next) {
   if (!p) return;
   if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
   if (!p.canAdmin) {
-    return negar(req, res, 403, 'Esta operação é reservada ao grupo "Radios-Admin".');
+    return negar(req, res, 403, 'Esta operação é reservada ao grupo "Ativos-Admin".');
   }
   next();
 }
@@ -219,7 +222,7 @@ router.get('/', async (req, res) => {
   try {
     res.json(await permissoesDoRequest(req));
   } catch (err) {
-    console.error('[radios/permissoes] GET falhou:', err.message);
+    console.error('[ativos/permissoes] GET falhou:', err.message);
     res.status(500).json({ error: 'Erro ao obter permissões' });
   }
 });

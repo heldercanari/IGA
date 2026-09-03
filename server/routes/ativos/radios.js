@@ -1,55 +1,36 @@
 'use strict';
 
 /**
- * Gestão de Rádios — porte do ficheiro `Radios apanhado.xlsx` (OneDrive, 7
- * folhas) para o Express da intranet.
+ * Rádios — porte do ficheiro `Radios apanhado.xlsx` (OneDrive, 7 folhas) para o
+ * Express da intranet.
  *
- * Mount em server/index.js DEPOIS do SSPI:
- *   const radiosApi = require('./routes/radios');
- *   app.use('/api/radios', radiosApi);
- *
- * O gate de VER (`exigirAcesso`) está aplicado a nível de router, portanto todos
- * os endpoints daqui exigem pertença ao módulo; as mutações levam ainda
- * `exigirEdicao` por-rota, e o abate/remoção `exigirAdmin`.
+ * Montado pelo `index.js` em `/radios`, **dentro do gate de VER**: as mutações
+ * levam ainda `exigirEdicao` por-rota, e o abate/remoção `exigirAdmin`.
+ * Endereço final das rotas: `/api/ativos/radios/…`.
  *
  * Correspondência com as folhas de origem:
- *   Radios            → GET|POST /radios        (+ /atribuir, /devolver)
- *   Radios Avariados  → POST /radios/:id/avarias, POST /avarias/:id/reparar
+ *   Radios            → GET|POST /              (+ /:id/atribuir, /:id/devolver)
+ *   Radios Avariados  → POST /:id/avarias, POST /avarias/:id/reparar
  *   Folha1            → a mesma coisa: era a lista dos avariados com nº de série
- *   Radios - Abate    → POST /radios/:id/abate
+ *   Radios - Abate    → POST /:id/abate
  *   TEI               → GET /sistema            (registo do TETRA, só leitura)
  *   Quest             → GET /conferencia        (o cruzamento com o questionário)
- *   Motorola          → entra em /radios pela importação, marca=Motorola
+ *   Motorola          → entra pela importação, marca=Motorola
+ *
+ * ⚠️ Os identificadores nas rotas levam `(\d+)`. Sem isso, `GET /:id` apanhava
+ * também o `/sistema`, o `/conferencia` e o `/utilizadores`, que estão escritos
+ * mais abaixo no ficheiro — e a resposta era um "Identificador inválido" que
+ * ninguém percebia.
  */
 
 const express = require('express');
 const router = express.Router();
 
 const { poolPromise, sql } = require('../../../db');
-const {
-  router: permissoesRouter,
-  exigirAcesso,
-  exigirEdicao,
-  exigirAdmin,
-} = require('./permissoes');
+const { exigirEdicao, exigirAdmin } = require('./permissoes');
 const { limpar, inteiro, data, hoje, actor, falhou } = require('./comum');
-const telemoveisRouter = require('./telemoveis');
 
 const ESTADOS = ['disponivel', 'atribuido', 'avariado', 'abatido'];
-
-// ─── /permissoes: aberto, diz ao cliente se ele tem acesso ─
-// Fica ANTES do gate de propósito: é o endpoint que o ecrã consulta para saber
-// o que mostrar, e a resposta a quem não tem acesso é `canView: false`, não um
-// 403 que o browser não consegue explicar ao utilizador.
-router.use('/permissoes', permissoesRouter);
-
-// ─── Gate de VER: tudo o que vem a seguir ──────────────────
-router.use(exigirAcesso);
-
-// ─── Telemóveis: o segundo tipo de activo ──────────────────
-// Dentro do gate, e com as mesmas permissões — é o mesmo módulo. As rotas estão
-// noutro ficheiro porque falam com outra base de dados (ver `db-telemoveis.js`).
-router.use('/telemoveis', telemoveisRouter);
 
 // ─── Helpers ───────────────────────────────────────────────
 // Os que os telemóveis também usam vivem em ./comum.js — ver o cabeçalho de lá.
@@ -138,7 +119,7 @@ router.get('/estatisticas', async (req, res) => {
  * texto punha o 1000 antes do 99, e o indicativo é lido como número por quem
  * trabalha com ele. Os que não têm indicativo vão para o fim.
  */
-router.get('/radios', async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const pool = await poolPromise;
     const pedido = pool.request();
@@ -195,7 +176,7 @@ router.get('/radios', async (req, res) => {
 });
 
 /** GET /radios/:id — o equipamento com todo o historial e o que o sistema sabe dele. */
-router.get('/radios/:id', async (req, res) => {
+router.get('/:id(\d+)', async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -231,7 +212,7 @@ router.get('/radios/:id', async (req, res) => {
 
 // ─── Criar e editar equipamento ────────────────────────────
 
-router.post('/radios', exigirEdicao, async (req, res) => {
+router.post('/', exigirEdicao, async (req, res) => {
   try {
     const b = req.body || {};
     const num_serie = limpar(b.num_serie);
@@ -270,7 +251,7 @@ router.post('/radios', exigirEdicao, async (req, res) => {
   }
 });
 
-router.put('/radios/:id', exigirEdicao, async (req, res) => {
+router.put('/:id(\d+)', exigirEdicao, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -306,7 +287,7 @@ router.put('/radios/:id', exigirEdicao, async (req, res) => {
 });
 
 /** Apagar é de administração e apaga o historial todo em cascata (ver migração 001). */
-router.delete('/radios/:id', exigirAdmin, async (req, res) => {
+router.delete('/:id(\d+)', exigirAdmin, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -329,7 +310,7 @@ router.delete('/radios/:id', exigirAdmin, async (req, res) => {
  * anterior, e o histórico perdia-se. Aqui a entrega anterior fica fechada e
  * legível.
  */
-router.post('/radios/:id/atribuir', exigirEdicao, async (req, res) => {
+router.post('/:id(\d+)/atribuir', exigirEdicao, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -376,7 +357,7 @@ router.post('/radios/:id/atribuir', exigirEdicao, async (req, res) => {
 });
 
 /** POST /radios/:id/devolver — fecha a atribuição activa. */
-router.post('/radios/:id/devolver', exigirEdicao, async (req, res) => {
+router.post('/:id(\d+)/devolver', exigirEdicao, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -409,7 +390,7 @@ router.post('/radios/:id/devolver', exigirEdicao, async (req, res) => {
 
 // ─── Avarias ───────────────────────────────────────────────
 
-router.post('/radios/:id/avarias', exigirEdicao, async (req, res) => {
+router.post('/:id(\d+)/avarias', exigirEdicao, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -447,7 +428,7 @@ router.post('/radios/:id/avarias', exigirEdicao, async (req, res) => {
  * `estado` pode ser 'reparada' (volta ao parque) ou 'irreparavel' (fica fechada
  * e o rádio disponível para abate — abater é decisão separada, e de admin).
  */
-router.post('/avarias/:id/reparar', exigirEdicao, async (req, res) => {
+router.post('/avarias/:id(\d+)/reparar', exigirEdicao, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -486,7 +467,7 @@ router.post('/avarias/:id/reparar', exigirEdicao, async (req, res) => {
  * POST /radios/:id/abate — tira o equipamento do parque sem o apagar.
  * A atribuição activa é fechada: um rádio abatido não pode continuar entregue.
  */
-router.post('/radios/:id/abate', exigirAdmin, async (req, res) => {
+router.post('/:id(\d+)/abate', exigirAdmin, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
@@ -526,7 +507,7 @@ router.post('/radios/:id/abate', exigirAdmin, async (req, res) => {
 });
 
 /** Anular um abate feito por engano — o rádio volta ao parque. */
-router.delete('/radios/:id/abate', exigirAdmin, async (req, res) => {
+router.delete('/:id(\d+)/abate', exigirAdmin, async (req, res) => {
   try {
     const id = inteiro(req.params.id);
     if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });

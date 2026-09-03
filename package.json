@@ -1,14 +1,14 @@
 {
-  "name": "radios-pm",
+  "name": "ativos-pm",
   "version": "1.0.0",
   "private": true,
-  "description": "Gestão de Rádios da Polícia Municipal de Lisboa — módulo destacado da intranet para desenvolvimento isolado",
+  "description": "Inventário e Gestão de Ativos da Polícia Municipal de Lisboa — módulo destacado da intranet para desenvolvimento isolado",
   "engines": {
     "node": ">=16.0.0"
   },
   "scripts": {
-    "harness": "node _harness-radios.js",
-    "importar": "node scripts/importar_xlsx.js",
+    "harness": "node _harness-ativos.js",
+    "importar-radios": "node scripts/importar_radios.js",
     "importar-telemoveis": "node scripts/importar_telemoveis.js"
   },
   "dependencies": {

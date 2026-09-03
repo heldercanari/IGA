@@ -250,9 +250,13 @@ GO
 -- ── 8. Grupos de acesso ────────────────────────────────────
 -- Mesmo padrão da correspondência (017): `tipo='acl'` distingue estes grupos de
 -- acesso dos orgânicos.
---   Radios          → ver + registar/editar
---   Radios-Consulta → só ver
---   Radios-Admin    → + importar, abater e apagar registos
+--   Ativos          → ver + registar/editar
+--   Ativos-Consulta → só ver
+--   Ativos-Admin    → + importar, abater e apagar registos
+--
+-- Os grupos são do MÓDULO e não dos rádios: valem para os telemóveis (migração
+-- 002) e para o equipamento que vier a seguir. Ficam nesta migração por ser a
+-- primeira do módulo, não por serem dos rádios.
 DECLARE @lider INT = 956627;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.colaboradores WHERE mecanografico = @lider)
@@ -261,27 +265,27 @@ BEGIN
     RETURN;
 END
 
-IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Radios')
+IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Ativos')
     INSERT INTO dbo.grupos (nome, sigla, descricao, lider_mecanografico, tipo)
-    VALUES ('Radios', 'RADIOS',
-            'Acesso à Gestão de Rádios (ver + registar/editar)', @lider, 'acl');
+    VALUES ('Ativos', 'ATIVOS',
+            'Acesso ao Inventário e Gestão de Ativos (ver + registar/editar)', @lider, 'acl');
 
-IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Radios-Consulta')
+IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Ativos-Consulta')
     INSERT INTO dbo.grupos (nome, sigla, descricao, lider_mecanografico, tipo)
-    VALUES ('Radios-Consulta', 'RADIOS-C',
-            'Gestão de Rádios — só consulta (vê o parque, sem registar nem editar)', @lider, 'acl');
+    VALUES ('Ativos-Consulta', 'ATIVOS-C',
+            'Inventário e Gestão de Ativos — só consulta (vê o equipamento, sem registar nem editar)', @lider, 'acl');
 
-IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Radios-Admin')
+IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Ativos-Admin')
     INSERT INTO dbo.grupos (nome, sigla, descricao, lider_mecanografico, tipo)
-    VALUES ('Radios-Admin', 'RADIOS-A',
-            'Gestão de Rádios — administração (importar, abater, apagar)', @lider, 'acl');
+    VALUES ('Ativos-Admin', 'ATIVOS-A',
+            'Inventário e Gestão de Ativos — administração (importar, abater, apagar)', @lider, 'acl');
 GO
 
 -- ── 9. Membros iniciais ────────────────────────────────────
 -- Quem trata dos rádios no NSIC. A gestão daqui para a frente é pela consola
 -- AD-PM, como qualquer outro grupo.
-DECLARE @gEditar INT = (SELECT id FROM dbo.grupos WHERE nome = 'Radios');
-DECLARE @gAdmin  INT = (SELECT id FROM dbo.grupos WHERE nome = 'Radios-Admin');
+DECLARE @gEditar INT = (SELECT id FROM dbo.grupos WHERE nome = 'Ativos');
+DECLARE @gAdmin  INT = (SELECT id FROM dbo.grupos WHERE nome = 'Ativos-Admin');
 
 INSERT INTO dbo.grupo_membros (grupo_id, mecanografico, data_entrada, ativo)
 SELECT @gEditar, m.mec, CAST(GETDATE() AS DATE), 1

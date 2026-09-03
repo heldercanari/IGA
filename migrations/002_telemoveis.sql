@@ -20,7 +20,7 @@
 -- O ficheiro de origem traz PIN, PUK, utilizador e palavra passe de cada
 -- telemóvel, à vista de quem abrisse a folha. Aqui ficam guardadas — são precisas
 -- a quem entrega o equipamento — mas **fora do que a listagem devolve**: só a
--- rota `/telemoveis/:id/credenciais`, reservada ao grupo `Radios-Admin`, as lê.
+-- rota `/telemoveis/:id/credenciais`, reservada ao grupo `Ativos-Admin`, as lê.
 -- Não são credenciais de acesso a esta aplicação (essa vem do Windows): são do
 -- cartão SIM e da conta do próprio aparelho.
 --
@@ -48,8 +48,8 @@
 -- do `DB_DATABASE` e corre-se este ficheiro lá: não há uma linha de SQL para
 -- reescrever.
 --
--- Os grupos de acesso são os mesmos da 001 — `Radios`, `Radios-Consulta` e
--- `Radios-Admin`: é o mesmo módulo, não uma aplicação nova. Como esses grupos
+-- Os grupos de acesso são os mesmos da 001 — `Ativos`, `Ativos-Consulta` e
+-- `Ativos-Admin`: é o mesmo módulo, não uma aplicação nova. Como esses grupos
 -- vivem noutra base, esta migração não lhes toca.
 --
 -- Idempotente: pode correr as vezes que forem precisas.

@@ -50,12 +50,12 @@ function hoje() {
 
 /** O username de quem está a fazer a operação, para a coluna `registado_por`. */
 function actor(req) {
-  return (req.radiosUser && req.radiosUser.username) || null;
+  return (req.ativosUser && req.ativosUser.username) || null;
 }
 
 /** Erro 500 uniforme, com o motivo nos logs e não na resposta. */
 function falhou(res, contexto, err) {
-  console.error(`[radios] ${contexto}:`, err.message);
+  console.error(`[ativos] ${contexto}:`, err.message);
   res.status(500).json({ error: `Erro ao ${contexto}.` });
 }
 
