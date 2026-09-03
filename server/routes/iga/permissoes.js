@@ -7,9 +7,9 @@
  * equipamento que vier a seguir. Quem pode ver rádios pode ver telemóveis.
  *
  * Modelo (espelha `server/routes/correspondencia/permissoes.js`):
- *   VER      → membro activo de 'Ativos' OU 'Ativos-Consulta' OU 'Ativos-Admin'
- *   EDITAR   → membro activo de 'Ativos'
- *   ADMIN    → membro activo de 'Ativos-Admin'  (importar, abater, apagar)
+ *   VER      → membro activo de 'IGA' OU 'IGA-Consulta' OU 'IGA-Admin'
+ *   EDITAR   → membro activo de 'IGA'
+ *   ADMIN    → membro activo de 'IGA-Admin'  (importar, abater, apagar)
  *   Admin da consola AD-PM (admin_users.ativo=1) entra em tudo, EXCEPTO na
  *   administração do módulo: essa é só do grupo (ver `canAdmin` abaixo).
  *
@@ -17,7 +17,7 @@
  * NUNCA ler `x-remote-user` cru: só `req.user`, que o servidor promove apenas
  * quando o pedido vem de um proxy de confiança.
  *
- *   GET /api/ativos/permissoes → o objecto de permissões do request
+ *   GET /api/iga/permissoes → o objecto de permissões do request
  *
  * Ao contrário da correspondência, não há filtro de visibilidade por serviço: um
  * rádio não tem destinatário, e quem entra no módulo vê o parque todo. Por isso
@@ -30,9 +30,9 @@ const express = require('express');
 const router = express.Router();
 const { poolPromise, sql } = require('../../../db');
 
-const GRUPO_EDITAR = 'Ativos';
-const GRUPO_CONSULTA = 'Ativos-Consulta';
-const GRUPO_ADMIN = 'Ativos-Admin';
+const GRUPO_EDITAR = 'IGA';
+const GRUPO_CONSULTA = 'IGA-Consulta';
+const GRUPO_ADMIN = 'IGA-Admin';
 const GRUPOS_ACESSO = [GRUPO_EDITAR, GRUPO_CONSULTA, GRUPO_ADMIN];
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -112,7 +112,7 @@ async function gruposDoColaborador(pool, mecanografico) {
  *
  * `isConsola` e `canAdmin` respondem a perguntas diferentes:
  *   isConsola → administrador da consola AD-PM; abre ver e editar.
- *   canAdmin  → importar, abater e apagar. SÓ membro activo de 'Ativos-Admin'.
+ *   canAdmin  → importar, abater e apagar. SÓ membro activo de 'IGA-Admin'.
  *               Sem esta separação, desactivar alguém no grupo não tinha efeito
  *               nenhum se essa pessoa fosse administradora da consola.
  */
@@ -144,7 +144,7 @@ async function permissoesDoRequest(req) {
     out.canView = out.canEdit || acesso.has(GRUPO_CONSULTA);
     out.canAdmin = acesso.has(GRUPO_ADMIN); // só o grupo — sem atalho pela consola
   } catch (err) {
-    console.error('[ativos/permissoes] resolução falhou:', err.message);
+    console.error('[iga/permissoes] resolução falhou:', err.message);
   }
   return out;
 }
@@ -156,42 +156,42 @@ function negar(req, res, status, message) {
   if (wantsJson) {
     return res.status(status).json({
       error: message,
-      codigo: status === 403 ? 'ATIVOS_SEM_ACESSO' : 'ATIVOS_NAO_AUTENTICADO',
+      codigo: status === 403 ? 'IGA_SEM_ACESSO' : 'IGA_NAO_AUTENTICADO',
     });
   }
   const titulo = status === 401 ? 'Não autenticado' : 'Acesso reservado';
-  res.status(status).type('html').send(`<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${titulo} · Inventário e Gestão de Ativos</title>
+  res.status(status).type('html').send(`<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${titulo} · IGA</title>
 <style>body{font-family:'Hanken Grotesk',system-ui,Arial,sans-serif;background:#f1f5f9;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.box{background:#fff;border:1px solid #e2e8f0;padding:40px 48px;border-radius:16px;max-width:460px;text-align:center;box-shadow:0 20px 40px rgba(15,23,42,.08)}h1{font-size:22px;margin:0 0 12px;color:#0f172a}p{color:#64748b;line-height:1.55;margin:0 0 18px}a{color:#2563eb;text-decoration:none;font-weight:700}</style></head>
 <body><div class="box"><h1>${titulo}</h1><p>${message}</p><a href="/index2.html">← Voltar à Intranet</a></div></body></html>`);
 }
 
-/** Resolve as permissões uma vez por pedido e guarda-as em req.ativosUser. */
+/** Resolve as permissões uma vez por pedido e guarda-as em req.igaUser. */
 async function permissoesDoPedido(req, res) {
-  if (req.ativosUser) return req.ativosUser;
+  if (req.igaUser) return req.igaUser;
   try {
-    req.ativosUser = await permissoesDoRequest(req);
+    req.igaUser = await permissoesDoRequest(req);
   } catch (err) {
-    console.error('[ativos/permissoes] middleware falhou:', err.message);
+    console.error('[iga/permissoes] middleware falhou:', err.message);
     negar(req, res, 500, 'Erro ao verificar permissões.');
     return null;
   }
-  return req.ativosUser;
+  return req.igaUser;
 }
 
-/** Middleware VER — 401 se não autenticado, 403 sem acesso. Popula req.ativosUser. */
+/** Middleware VER — 401 se não autenticado, 403 sem acesso. Popula req.igaUser. */
 async function exigirAcesso(req, res, next) {
   const p = await permissoesDoPedido(req, res);
   if (!p) return;
   if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
   if (!p.canView) {
-    return negar(req, res, 403, 'Acesso reservado ao Inventário e Gestão de Ativos. Pede para te adicionarem ao grupo "Ativos" (ou "Ativos-Consulta" para consulta).');
+    return negar(req, res, 403, 'Acesso reservado ao Inventário e Gestão de Ativos. Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
   }
   next();
 }
 
 /**
  * Middleware EDITAR — aplicado por-rota em TODAS as mutações.
- * Reusa req.ativosUser (o gate de VER corre sempre antes, a nível de router).
+ * Reusa req.igaUser (o gate de VER corre sempre antes, a nível de router).
  */
 async function exigirEdicao(req, res, next) {
   const p = await permissoesDoPedido(req, res);
@@ -205,7 +205,7 @@ async function exigirEdicao(req, res, next) {
 
 /**
  * Middleware ADMIN — importação, abate e remoção de registos.
- * Testa `canAdmin`, não `isConsola`: a filiação activa em 'Ativos-Admin' é a
+ * Testa `canAdmin`, não `isConsola`: a filiação activa em 'IGA-Admin' é a
  * única chave.
  */
 async function exigirAdmin(req, res, next) {
@@ -213,7 +213,7 @@ async function exigirAdmin(req, res, next) {
   if (!p) return;
   if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
   if (!p.canAdmin) {
-    return negar(req, res, 403, 'Esta operação é reservada ao grupo "Ativos-Admin".');
+    return negar(req, res, 403, 'Esta operação é reservada ao grupo "IGA-Admin".');
   }
   next();
 }
@@ -222,7 +222,7 @@ router.get('/', async (req, res) => {
   try {
     res.json(await permissoesDoRequest(req));
   } catch (err) {
-    console.error('[ativos/permissoes] GET falhou:', err.message);
+    console.error('[iga/permissoes] GET falhou:', err.message);
     res.status(500).json({ error: 'Erro ao obter permissões' });
   }
 });

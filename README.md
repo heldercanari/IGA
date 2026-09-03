@@ -1,9 +1,14 @@
-# Inventário e Gestão de Ativos — Polícia Municipal de Lisboa
+# Inventário e Gestão de Ativos (IGA) — Polícia Municipal de Lisboa
 
 Módulo destacado da intranet da PM para gerir o equipamento distribuído: quem tem o quê, o
 que está avariado, o que foi abatido, e a conferência contra o questionário aos agentes.
 
-Dois tipos de activo, um separador para cada:
+**IGA** é o nome curto da aplicação, e é ele que está no código: pasta `server/routes/iga/`,
+API `/api/iga/<tipo>`, assets em `public/iga/`, grupos `IGA`, `IGA-Consulta` e `IGA-Admin`.
+Os nomes por tipo de equipamento — `radios`, `telemoveis`, as tabelas e as bases — não levam
+o prefixo: pertencem ao tipo, não à aplicação.
+
+Dois tipos de activo, uma página para cada:
 
 - **Rádios** — 407 aparelhos TETRA. Substitui o `Radios apanhado.xlsx` (OneDrive, 7 folhas).
 - **Telemóveis** — 300 aparelhos. Substitui o `Livro 1.xlsx` (`C:\Apps\telemoveis`, uma folha).
@@ -11,7 +16,7 @@ Dois tipos de activo, um separador para cada:
 > Este repositório é **um módulo destacado**, não um projecto autónomo — mesmo molde do
 > `correspondencia-pm`. A casa a sério do código é o repositório da intranet; aqui está só o
 > módulo dos rádios, com o mínimo à volta para arrancar. Os caminhos
-> (`server/routes/ativos/…`, `public/<tipo>.html`) são os mesmos da intranet de propósito,
+> (`server/routes/iga/…`, `public/<tipo>.html`) são os mesmos da intranet de propósito,
 > para a cópia ser ficheiro-a-ficheiro.
 
 **Uma página por tipo de equipamento**, independente das outras: `public/radios.html` e
@@ -156,7 +161,7 @@ parque pelo número de série.
 **Telemóveis** — 300 aparelhos com número, IMEI, serviço e estado, com as mesmas entregas,
 avarias e abates dos rádios. As **credenciais do cartão e da conta** (PIN, PUK, utilizador e
 palavra passe) não aparecem na listagem nem na exportação: só na ficha do aparelho, atrás de
-"mostrar credenciais", e só para quem é `Ativos-Admin`. Cada leitura fica no log.
+"mostrar credenciais", e só para quem é `IGA-Admin`. Cada leitura fica no log.
 
 > ⚠️ Dois avisos sobre as credenciais que vêm do ficheiro de origem: a **palavra passe é
 > derivável do utilizador** nos 300 aparelhos (`pm251ind` → `pm251ind!`), e os **PIN perderam
@@ -165,11 +170,11 @@ palavra passe) não aparecem na listagem nem na exportação: só na ficha do ap
 
 ## API
 
-Tudo debaixo de `/api/ativos`. O gate de VER está aplicado ao router inteiro; as mutações
+Tudo debaixo de `/api/iga`. O gate de VER está aplicado ao router inteiro; as mutações
 levam `exigirEdicao`, e o abate e a remoção `exigirAdmin`.
 
-Cada tipo de equipamento tem o seu router debaixo do seu nome — `/api/ativos/radios/…` e
-`/api/ativos/telemoveis/…` —, e o `/permissoes` é do módulo, comum aos dois.
+Cada tipo de equipamento tem o seu router debaixo do seu nome — `/api/iga/radios/…` e
+`/api/iga/telemoveis/…` —, e o `/permissoes` é do módulo, comum aos dois.
 
 | Método | Rota | Quem |
 |---|---|---|
@@ -190,7 +195,7 @@ Cada tipo é uma página e um router próprios. Para juntar, por exemplo, comput
 1. **Migração** — `migrations/00N_computadores.sql`, no molde da `002`: a tabela do
    equipamento mais `_atribuicoes`, `_avarias` e `_abates`. Base própria ou a de um dos
    outros: é só uma variável no `.env` e uma pool.
-2. **Rotas** — `server/routes/ativos/computadores.js`, no molde do `telemoveis.js`, e uma
+2. **Rotas** — `server/routes/iga/computadores.js`, no molde do `telemoveis.js`, e uma
    linha no `index.js`: `router.use('/computadores', require('./computadores'))`.
 3. **Importador**, se houver ficheiro de origem — `scripts/importar_computadores.js` e um
    `npm run` no `package.json`.
@@ -199,7 +204,7 @@ Cada tipo é uma página e um router próprios. Para juntar, por exemplo, comput
 5. ⚠️ **A navegação entre páginas muda em TODAS as páginas** — a lista de ligações no topo
    está escrita em cada uma. É o preço de as páginas serem independentes, e é aqui que se
    costuma dar por isso tarde.
-6. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-ativos.js`. Na intranet, a página
+6. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
    entra no `server/index.js` de lá, gated por `exigirAcesso`.
 
 Os grupos de acesso **não mudam**: são do módulo, valem para todos os tipos.
@@ -208,9 +213,9 @@ Os grupos de acesso **não mudam**: são do módulo, valem para todos os tipos.
 
 | Grupo | Pode |
 |---|---|
-| `Ativos` | ver + registar/editar |
-| `Ativos-Consulta` | só ver |
-| `Ativos-Admin` | + importar, abater e apagar |
+| `IGA` | ver + registar/editar |
+| `IGA-Consulta` | só ver |
+| `IGA-Admin` | + importar, abater e apagar |
 
 A gestão é pela consola AD-PM, como qualquer outro grupo. O administrador da consola
 (`admin_users`) entra em tudo **excepto** na administração do módulo — essa é só do grupo.

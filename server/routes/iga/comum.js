@@ -50,12 +50,12 @@ function hoje() {
 
 /** O username de quem está a fazer a operação, para a coluna `registado_por`. */
 function actor(req) {
-  return (req.ativosUser && req.ativosUser.username) || null;
+  return (req.igaUser && req.igaUser.username) || null;
 }
 
 /** Erro 500 uniforme, com o motivo nos logs e não na resposta. */
 function falhou(res, contexto, err) {
-  console.error(`[ativos] ${contexto}:`, err.message);
+  console.error(`[iga] ${contexto}:`, err.message);
   res.status(500).json({ error: `Erro ao ${contexto}.` });
 }
 

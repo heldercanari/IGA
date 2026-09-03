@@ -6,7 +6,7 @@
  *
  * Montado pelo `index.js` em `/radios`, **dentro do gate de VER**: as mutações
  * levam ainda `exigirEdicao` por-rota, e o abate/remoção `exigirAdmin`.
- * Endereço final das rotas: `/api/ativos/radios/…`.
+ * Endereço final das rotas: `/api/iga/radios/…`.
  *
  * Correspondência com as folhas de origem:
  *   Radios            → GET|POST /              (+ /:id/atribuir, /:id/devolver)
@@ -24,7 +24,7 @@
  *
  * A alternativa — restringir o parâmetro com `/:id(\d+)` — foi tentada e **não
  * funciona nesta versão do Express** (4.22): a rota deixa de casar de todo e o
- * pedido morre num "Cannot GET /api/ativos/radios/791". Se um dia apetecer
+ * pedido morre num "Cannot GET /api/iga/radios/791". Se um dia apetecer
  * voltar a isso, abrir o detalhe de um rádio antes de dar por bom.
  */
 

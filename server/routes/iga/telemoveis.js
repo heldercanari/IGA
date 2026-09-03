@@ -4,14 +4,14 @@
  * Telemóveis — o segundo tipo de activo do módulo.
  *
  * Montado pelo `index.js` em `/telemoveis`, **dentro do gate de VER**: as
- * permissões são as mesmas do resto (grupos `Ativos`, `Ativos-Consulta` e
- * `Ativos-Admin`). O que muda é a base de dados — ver `db-telemoveis.js`.
+ * permissões são as mesmas do resto (grupos `IGA`, `IGA-Consulta` e
+ * `IGA-Admin`). O que muda é a base de dados — ver `db-telemoveis.js`.
  *
  * ⚠️ **As credenciais nunca saem daqui sem ser pela rota própria.** Nenhuma
  * consulta deste ficheiro devolve `pin`, `puk`, `utilizador` ou `palavra_passe`:
  * as colunas estão escritas uma a uma nos SELECT, e não há `SELECT *`, para que
  * acrescentar um campo à listagem seja uma decisão e não um descuido. Só
- * `GET /telemoveis/:id/credenciais`, reservada ao grupo `Ativos-Admin`, as lê.
+ * `GET /telemoveis/:id/credenciais`, reservada ao grupo `IGA-Admin`, as lê.
  */
 
 const express = require('express');
@@ -153,7 +153,7 @@ router.get('/:id/credenciais', exigirAdmin, async (req, res) => {
     const row = r.recordset && r.recordset[0];
     if (!row) return res.status(404).json({ error: 'Telemóvel não encontrado.' });
 
-    console.warn(`[ativos/telemoveis] credenciais do telemóvel ${id} lidas por ${actor(req)}`);
+    console.warn(`[iga/telemoveis] credenciais do telemóvel ${id} lidas por ${actor(req)}`);
     res.json({
       ...row,
       pin_curto: !!(row.pin && /^\d{1,3}$/.test(row.pin)),
@@ -275,7 +275,7 @@ router.put('/:id', exigirEdicao, async (req, res) => {
       sets.push(`${col} = @${col}`);
     }
 
-    const podeCredenciais = req.ativosUser && req.ativosUser.canAdmin;
+    const podeCredenciais = req.igaUser && req.igaUser.canAdmin;
     for (const [col, tipo, campo] of [
       ['pin', sql.NVarChar(20), 'pin'],
       ['puk', sql.NVarChar(20), 'puk'],

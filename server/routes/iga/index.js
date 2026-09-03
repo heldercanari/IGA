@@ -4,18 +4,18 @@
  * Inventário e Gestão de Ativos — o router do módulo.
  *
  * Mount em server/index.js DEPOIS do SSPI:
- *   const ativosApi = require('./routes/ativos');
- *   app.use('/api/ativos', ativosApi);
+ *   const igaApi = require('./routes/iga');
+ *   app.use('/api/iga', igaApi);
  *
  * Este ficheiro não tem rotas próprias: abre o `/permissoes`, aplica o gate de
  * VER e monta um router por tipo de equipamento. **É aqui que um tipo novo
  * entra** — uma linha, a seguir às outras duas:
  *
- *   /api/ativos/radios      → ./radios.js       (base `RadiosDev`)
- *   /api/ativos/telemoveis  → ./telemoveis.js   (base `TelemoveisDev`)
+ *   /api/iga/radios      → ./radios.js       (base `RadiosDev`)
+ *   /api/iga/telemoveis  → ./telemoveis.js   (base `TelemoveisDev`)
  *
  * Cada tipo tem o seu ficheiro e a sua base; o que partilham são as permissões
- * (grupos `Ativos`, `Ativos-Consulta` e `Ativos-Admin`) e os ajudantes de
+ * (grupos `IGA`, `IGA-Consulta` e `IGA-Admin`) e os ajudantes de
  * `comum.js`. Não há rota que cruze dois tipos, e é de propósito: as bases são
  * separadas e não há JOIN possível entre elas.
  */

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telemóveis · Inventário e Gestão de Ativos</title>
-    <link rel="icon" type="image/png" href="/ativos/favicon.png">
+    <title>Telemóveis · IGA</title>
+    <link rel="icon" type="image/png" href="/iga/favicon.png">
     <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
          aplica quando corre. Adiado para depois do parse, o browser chega a pintar
          a página em cru. O ficheiro é local, não vem de CDN nenhum. O lucide fica
          adiado — é só ícones, e o script de baixo já espera por ele. -->
-    <script src="/ativos/tailwind.global.js"></script>
-    <script src="/ativos/lucide.min.js" defer></script>
+    <script src="/iga/tailwind.global.js"></script>
+    <script src="/iga/lucide.min.js" defer></script>
     <style>
         /* `hidden` é uma classe do Tailwind, portanto só existe depois de ele
            compilar. Declará-la aqui garante que os modais e o toast não aparecem
@@ -50,7 +50,7 @@
 
 <div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
     <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
-        <img src="/ativos/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <img src="/iga/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
         <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
         <p id="erroDetalhe" class="text-xs text-slate-500"></p>
     </div>
@@ -60,9 +60,11 @@
 
     <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div class="flex items-center gap-4">
-            <img src="/ativos/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <img src="/iga/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
             <div>
-                <h1 class="text-xl font-extrabold text-slate-900">Inventário e Gestão de Ativos</h1>
+                <h1 class="text-xl font-extrabold text-slate-900">Inventário e Gestão de Ativos
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-400">IGA</span>
+                </h1>
                 <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
             </div>
         </div>
@@ -200,8 +202,8 @@
 <script>
 'use strict';
 
-const API = '/api/ativos/telemoveis';   // as rotas deste ecrã
-const API_MODULO = '/api/ativos';       // /permissoes é do módulo, não do tipo
+const API = '/api/iga/telemoveis';   // as rotas deste ecrã
+const API_MODULO = '/api/iga';       // /permissoes é do módulo, não do tipo
 
 const estado = {
   permissoes: null,
@@ -417,7 +419,7 @@ async function abrirDetalhe(id) {
         ${estado.permissoes.canAdmin
           ? `<p class="text-xs text-slate-500 mb-2">PIN, PUK e conta do aparelho. A leitura fica registada no log.</p>
              <button id="btnCredenciais" class="text-xs font-semibold text-blue-600 hover:underline">Mostrar credenciais</button>`
-          : '<p class="text-sm text-slate-400">Reservado ao grupo Ativos-Admin.</p>'}
+          : '<p class="text-sm text-slate-400">Reservado ao grupo IGA-Admin.</p>'}
       </div>
     </section>
 
@@ -770,7 +772,7 @@ async function arrancar() {
   }
   if (!estado.permissoes.canView) {
     return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
-      'Pede para te adicionarem ao grupo "Ativos" (ou "Ativos-Consulta" para consulta).');
+      'Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
   }
 
   document.getElementById('nomeUtilizador').textContent =

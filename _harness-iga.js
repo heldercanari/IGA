@@ -20,8 +20,8 @@
  */
 const path = require('path');
 const express = require('express');
-const router = require('./server/routes/ativos');
-const { exigirAcesso } = require('./server/routes/ativos/permissoes');
+const router = require('./server/routes/iga');
+const { exigirAcesso } = require('./server/routes/iga/permissoes');
 
 const ATOR = process.env.ATOR || 'helder.canarias';
 const PORTA = parseInt(process.env.HARNESS_PORT || '3943', 10);
@@ -34,7 +34,7 @@ app.use(express.json());
 app.use((req, _res, next) => { req.user = `PM\\${ATOR}`; next(); });
 
 // Mesma ordem do server/index.js: as páginas são gated, os assets são públicos.
-app.use('/api/ativos', router);
+app.use('/api/iga', router);
 for (const pagina of PAGINAS) {
   app.get([`/${pagina}.html`, `/${pagina}`], exigirAcesso, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -45,6 +45,6 @@ app.get('/', (req, res) => res.redirect(`/${PAGINAS[0]}.html`));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORTA, () => {
-  console.log(`[harness ativos] http://localhost:${PORTA}/  (actor: ${ATOR}, BD: ${process.env.DB_DATABASE || 'do .env'})`);
+  console.log(`[harness IGA] http://localhost:${PORTA}/  (actor: ${ATOR}, BD: ${process.env.DB_DATABASE || 'do .env'})`);
   for (const p of PAGINAS) console.log(`    · http://localhost:${PORTA}/${p}.html`);
 });

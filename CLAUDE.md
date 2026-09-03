@@ -1,13 +1,24 @@
-# Inventário e Gestão de Ativos — instruções para agentes
+# Inventário e Gestão de Ativos (IGA) — instruções para agentes
 
 Este repositório é **um módulo destacado da intranet da Polícia Municipal de Lisboa**, não um
-projecto autónomo. A casa a sério do código é o repositório da intranet; aqui está só a gestão
-de rádios, com o mínimo à volta para arrancar. É o mesmo molde do `correspondencia-pm`
+projecto autónomo. A casa a sério do código é o repositório da intranet; aqui está só o
+inventário de equipamento, com o mínimo à volta para arrancar. É o mesmo molde do `correspondencia-pm`
 (`C:\Apps\CorrespondenciaDEV\correspondencia-pm`) — quando houver dúvida sobre convenções, é lá
 que se vai ver.
 
 O `README.md` explica como montar e correr. Este ficheiro tem **apenas os gotchas** — o que não
 se descobre a ler o código, e o que já correu mal antes.
+
+## O nome
+
+**IGA** é o nome curto da aplicação e é o que está no código: `server/routes/iga/`,
+`/api/iga/<tipo>`, `public/iga/`, grupos `IGA`, `IGA-Consulta` e `IGA-Admin`, `req.igaUser`,
+código de erro `IGA_SEM_ACESSO`. Nos ecrãs aparece o nome por extenso — "Inventário e Gestão
+de Ativos" — com a sigla ao lado; só o separador do browser leva `· IGA`, que é o que lá cabe.
+
+**Os nomes por tipo de equipamento não levam o prefixo**: `radios`, `telemoveis`, as páginas,
+as tabelas (`radios_*`, `telemoveis_*`) e as bases pertencem ao tipo, não à aplicação. Um tipo
+novo entra com o seu nome, não com `iga_qualquer_coisa`.
 
 ## O que não se altera aqui
 
@@ -41,10 +52,10 @@ se descobre a ler o código, e o que já correu mal antes.
   `.env` — sem tocar numa linha de SQL.
 - Pela mesma razão **não há consultas que cruzem os dois tipos de activo**. Uma pessoa com um
   rádio e um telemóvel aparece nas duas listas, e não há JOIN possível entre elas.
-- As rotas dos telemóveis estão em `server/routes/ativos/telemoveis.js` **porque falam com a
+- As rotas dos telemóveis estão em `server/routes/iga/telemoveis.js` **porque falam com a
   outra pool**, não por serem outro módulo: montam dentro do mesmo router e usam os mesmos
   grupos de acesso.
-- O que os dois tipos partilham vive em `server/routes/ativos/comum.js` (leitura de campos e
+- O que os dois tipos partilham vive em `server/routes/iga/comum.js` (leitura de campos e
   datas). O recálculo do estado **não** está lá de propósito: conhece as tabelas de cada tipo.
 
 ## Base de dados
@@ -111,7 +122,7 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
 - **Não acrescentes autenticação.** A identidade vem do Windows (SSPI) na intranet e é injectada
   pelo harness em desenvolvimento.
 - Nunca leias `x-remote-user` directamente — só `req.user`.
-- `canAdmin` é só do grupo `Ativos-Admin`: ser administrador da consola AD-PM **não** abre o
+- `canAdmin` é só do grupo `IGA-Admin`: ser administrador da consola AD-PM **não** abre o
   abate. É de propósito — senão, desactivar alguém no grupo não tinha efeito nenhum.
 
 ## Uma página por tipo de equipamento
@@ -123,8 +134,8 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
   descuido. Se algum dia for para mudar, é conversa a ter, não uma refactorização de passagem.
 - ⚠️ **A navegação do topo está escrita em cada página.** Ao acrescentar um tipo, a lista de
   ligações muda em TODAS — é o primeiro sítio onde a duplicação morde.
-- O que **é** partilhado, e continua a sê-lo: o servidor (`server/routes/ativos/`, um router
-  por tipo montado no `index.js`), as permissões, e os assets em `public/ativos/`.
+- O que **é** partilhado, e continua a sê-lo: o servidor (`server/routes/iga/`, um router
+  por tipo montado no `index.js`), as permissões, e os assets em `public/iga/`.
 - O passo a passo para juntar um tipo novo está no README, secção *Acrescentar um tipo de
   equipamento*.
 
@@ -132,7 +143,7 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
 
 - **Não há build.** Cada página é HTML, CSS e JavaScript num ficheiro só, servido
   directamente: guardar e recarregar chega.
-- Alterações em `server/routes/ativos/` obrigam a **reiniciar o harness**. O
+- Alterações em `server/routes/iga/` obrigam a **reiniciar o harness**. O
   `permissoes.js` tem uma cache de 10 minutos por utilizador: depois de mexer em
   `colaboradores` ou nos grupos, reiniciar é a única forma de ver o efeito.
 - ⚠️ **A ordem das rotas nos ficheiros é significativa.** O Express serve a primeira que casa e
@@ -140,7 +151,7 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
   `/utilizadores`, `/estatisticas`) vão **acima** do `/:id`. Restringir o parâmetro com
   `/:id(\d+)` **não funciona** nesta versão do Express (4.22): a rota deixa de casar de todo e
   o pedido morre num "Cannot GET". Já foi tentado; o detalhe do rádio dava 404.
-- O Tailwind e o lucide são **ficheiros locais** em `public/ativos/`, não vêm de CDN.
+- O Tailwind e o lucide são **ficheiros locais** em `public/iga/`, não vêm de CDN.
 - **O `.env` nunca entra no git.** Variáveis novas documentam-se no `.env.example`, sem valores.
 
 ## Convenções

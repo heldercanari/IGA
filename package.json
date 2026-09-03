@@ -1,5 +1,5 @@
 {
-  "name": "ativos-pm",
+  "name": "iga-pm",
   "version": "1.0.0",
   "private": true,
   "description": "Inventário e Gestão de Ativos da Polícia Municipal de Lisboa — módulo destacado da intranet para desenvolvimento isolado",
@@ -7,7 +7,7 @@
     "node": ">=16.0.0"
   },
   "scripts": {
-    "harness": "node _harness-ativos.js",
+    "harness": "node _harness-iga.js",
     "importar-radios": "node scripts/importar_radios.js",
     "importar-telemoveis": "node scripts/importar_telemoveis.js"
   },

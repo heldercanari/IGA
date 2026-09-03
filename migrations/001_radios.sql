@@ -250,9 +250,9 @@ GO
 -- ── 8. Grupos de acesso ────────────────────────────────────
 -- Mesmo padrão da correspondência (017): `tipo='acl'` distingue estes grupos de
 -- acesso dos orgânicos.
---   Ativos          → ver + registar/editar
---   Ativos-Consulta → só ver
---   Ativos-Admin    → + importar, abater e apagar registos
+--   IGA             → ver + registar/editar
+--   IGA-Consulta    → só ver
+--   IGA-Admin       → + importar, abater e apagar registos
 --
 -- Os grupos são do MÓDULO e não dos rádios: valem para os telemóveis (migração
 -- 002) e para o equipamento que vier a seguir. Ficam nesta migração por ser a
@@ -265,27 +265,27 @@ BEGIN
     RETURN;
 END
 
-IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Ativos')
+IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'IGA')
     INSERT INTO dbo.grupos (nome, sigla, descricao, lider_mecanografico, tipo)
-    VALUES ('Ativos', 'ATIVOS',
+    VALUES ('IGA', 'IGA',
             'Acesso ao Inventário e Gestão de Ativos (ver + registar/editar)', @lider, 'acl');
 
-IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Ativos-Consulta')
+IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'IGA-Consulta')
     INSERT INTO dbo.grupos (nome, sigla, descricao, lider_mecanografico, tipo)
-    VALUES ('Ativos-Consulta', 'ATIVOS-C',
+    VALUES ('IGA-Consulta', 'IGA-C',
             'Inventário e Gestão de Ativos — só consulta (vê o equipamento, sem registar nem editar)', @lider, 'acl');
 
-IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'Ativos-Admin')
+IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'IGA-Admin')
     INSERT INTO dbo.grupos (nome, sigla, descricao, lider_mecanografico, tipo)
-    VALUES ('Ativos-Admin', 'ATIVOS-A',
+    VALUES ('IGA-Admin', 'IGA-A',
             'Inventário e Gestão de Ativos — administração (importar, abater, apagar)', @lider, 'acl');
 GO
 
 -- ── 9. Membros iniciais ────────────────────────────────────
 -- Quem trata dos rádios no NSIC. A gestão daqui para a frente é pela consola
 -- AD-PM, como qualquer outro grupo.
-DECLARE @gEditar INT = (SELECT id FROM dbo.grupos WHERE nome = 'Ativos');
-DECLARE @gAdmin  INT = (SELECT id FROM dbo.grupos WHERE nome = 'Ativos-Admin');
+DECLARE @gEditar INT = (SELECT id FROM dbo.grupos WHERE nome = 'IGA');
+DECLARE @gAdmin  INT = (SELECT id FROM dbo.grupos WHERE nome = 'IGA-Admin');
 
 INSERT INTO dbo.grupo_membros (grupo_id, mecanografico, data_entrada, ativo)
 SELECT @gEditar, m.mec, CAST(GETDATE() AS DATE), 1
