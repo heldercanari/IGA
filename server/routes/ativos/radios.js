@@ -17,10 +17,15 @@
  *   Quest             → GET /conferencia        (o cruzamento com o questionário)
  *   Motorola          → entra pela importação, marca=Motorola
  *
- * ⚠️ Os identificadores nas rotas levam `(\d+)`. Sem isso, `GET /:id` apanhava
- * também o `/sistema`, o `/conferencia` e o `/utilizadores`, que estão escritos
- * mais abaixo no ficheiro — e a resposta era um "Identificador inválido" que
- * ninguém percebia.
+ * ⚠️ **A ORDEM DAS ROTAS AQUI É SIGNIFICATIVA.** O `/sistema`, o `/conferencia`
+ * e o `/utilizadores` estão escritos ANTES do `/:id` de propósito: o Express
+ * serve a primeira que casa, e o `/:id` apanha qualquer palavra. Uma rota nova
+ * com nome fixo vai para cima do `/:id`, não para o fim do ficheiro.
+ *
+ * A alternativa — restringir o parâmetro com `/:id(\d+)` — foi tentada e **não
+ * funciona nesta versão do Express** (4.22): a rota deixa de casar de todo e o
+ * pedido morre num "Cannot GET /api/ativos/radios/791". Se um dia apetecer
+ * voltar a isso, abrir o detalhe de um rádio antes de dar por bom.
  */
 
 const express = require('express');
@@ -106,419 +111,6 @@ router.get('/estatisticas', async (req, res) => {
     });
   } catch (err) {
     falhou(res, 'obter estatísticas', err);
-  }
-});
-
-// ─── Listagem do parque ────────────────────────────────────
-
-/**
- * GET /radios?q=&estado=&marca=
- *
- * `q` procura em série, indicativo, alias, modelo e no nome de quem o tem.
- * A ordenação é pelo indicativo tratado como número (`TRY_CONVERT`): ordenar o
- * texto punha o 1000 antes do 99, e o indicativo é lido como número por quem
- * trabalha com ele. Os que não têm indicativo vão para o fim.
- */
-router.get('/', async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const pedido = pool.request();
-    const filtros = [];
-
-    const q = limpar(req.query.q);
-    if (q) {
-      pedido.input('q', sql.NVarChar(200), `%${q}%`);
-      filtros.push(`(r.num_serie LIKE @q OR r.indicativo LIKE @q OR r.alias_tei LIKE @q
-                     OR r.modelo LIKE @q OR r.marca LIKE @q OR r.tie LIKE @q
-                     OR a.nome_utilizador LIKE @q OR CAST(a.matricula AS NVARCHAR(20)) LIKE @q)`);
-    }
-    const estado = limpar(req.query.estado);
-    if (estado && ESTADOS.includes(estado)) {
-      pedido.input('estado', sql.VarChar(20), estado);
-      filtros.push('r.estado = @estado');
-    }
-    const marca = limpar(req.query.marca);
-    if (marca) {
-      pedido.input('marca', sql.NVarChar(40), marca);
-      filtros.push('r.marca = @marca');
-    }
-
-    const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
-    const r = await pedido.query(`
-      SELECT TOP 2000
-        r.id, r.num_serie, r.indicativo, r.marca, r.modelo, r.alias_tei, r.radio_id_tei,
-        r.tie, r.estado, r.obs,
-        a.id AS atribuicao_id, a.matricula, a.nome_utilizador, a.data_entrega, a.guia,
-        av.id AS avaria_id, av.tipo_avaria, av.ordem, av.localizacao,
-        ab.data_abate, ab.motivo AS motivo_abate
-      FROM dbo.radios r
-      OUTER APPLY (
-        SELECT TOP 1 * FROM dbo.radios_atribuicoes x
-        WHERE x.radio_id = r.id AND x.data_devolucao IS NULL
-        ORDER BY x.data_entrega DESC, x.id DESC) a
-      OUTER APPLY (
-        SELECT TOP 1 * FROM dbo.radios_avarias x
-        WHERE x.radio_id = r.id AND x.estado = 'aberta'
-        ORDER BY x.id DESC) av
-      OUTER APPLY (
-        SELECT TOP 1 * FROM dbo.radios_abates x
-        WHERE x.radio_id = r.id ORDER BY x.id DESC) ab
-      ${where}
-      ORDER BY
-        CASE WHEN TRY_CONVERT(INT, r.indicativo) IS NULL THEN 1 ELSE 0 END,
-        TRY_CONVERT(INT, r.indicativo),
-        r.indicativo, r.id`);
-
-    res.json(r.recordset);
-  } catch (err) {
-    falhou(res, 'listar os rádios', err);
-  }
-});
-
-/** GET /radios/:id — o equipamento com todo o historial e o que o sistema sabe dele. */
-router.get('/:id(\d+)', async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    const radio = await radioOu404(pool, id, res);
-    if (!radio) return;
-
-    const [atribuicoes, avarias, abate, sistema] = await Promise.all([
-      pool.request().input('id', sql.Int, id).query(
-        'SELECT * FROM dbo.radios_atribuicoes WHERE radio_id = @id ORDER BY ISNULL(data_entrega, \'1900-01-01\') DESC, id DESC'),
-      pool.request().input('id', sql.Int, id).query(
-        'SELECT * FROM dbo.radios_avarias WHERE radio_id = @id ORDER BY id DESC'),
-      pool.request().input('id', sql.Int, id).query(
-        'SELECT TOP 1 * FROM dbo.radios_abates WHERE radio_id = @id ORDER BY id DESC'),
-      // O cruzamento com o TETRA é por série, e só por série: o alias também dá
-      // um palpite, mas é texto escrito à mão em duas listas diferentes.
-      pool.request().input('serie', sql.NVarChar(60), radio.num_serie).query(
-        'SELECT TOP 1 * FROM dbo.radios_sistema WHERE num_serie IS NOT NULL AND num_serie = @serie'),
-    ]);
-
-    res.json({
-      ...radio,
-      atribuicoes: atribuicoes.recordset,
-      avarias: avarias.recordset,
-      abate: abate.recordset[0] || null,
-      sistema: sistema.recordset[0] || null,
-    });
-  } catch (err) {
-    falhou(res, 'obter o rádio', err);
-  }
-});
-
-// ─── Criar e editar equipamento ────────────────────────────
-
-router.post('/', exigirEdicao, async (req, res) => {
-  try {
-    const b = req.body || {};
-    const num_serie = limpar(b.num_serie);
-    const indicativo = limpar(b.indicativo);
-    if (!num_serie && !indicativo) {
-      return res.status(400).json({ error: 'É preciso pelo menos o número de série ou o indicativo.' });
-    }
-
-    const pool = await poolPromise;
-    if (num_serie) {
-      const dup = await pool.request()
-        .input('s', sql.NVarChar(60), num_serie)
-        .query('SELECT TOP 1 id FROM dbo.radios WHERE num_serie = @s');
-      if (dup.recordset.length) {
-        return res.status(409).json({ error: `Já existe um rádio com o número de série ${num_serie}.`, id: dup.recordset[0].id });
-      }
-    }
-
-    const r = await pool.request()
-      .input('num_serie', sql.NVarChar(60), num_serie)
-      .input('indicativo', sql.NVarChar(20), indicativo)
-      .input('marca', sql.NVarChar(40), limpar(b.marca))
-      .input('modelo', sql.NVarChar(60), limpar(b.modelo))
-      .input('alias_tei', sql.NVarChar(60), limpar(b.alias_tei))
-      .input('radio_id_tei', sql.Int, inteiro(b.radio_id_tei))
-      .input('tie', sql.NVarChar(40), limpar(b.tie))
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .query(`
-        INSERT INTO dbo.radios (num_serie, indicativo, marca, modelo, alias_tei, radio_id_tei, tie, obs)
-        OUTPUT INSERTED.id
-        VALUES (@num_serie, @indicativo, @marca, @modelo, @alias_tei, @radio_id_tei, @tie, @obs)`);
-
-    res.status(201).json({ id: r.recordset[0].id });
-  } catch (err) {
-    falhou(res, 'criar o rádio', err);
-  }
-});
-
-router.put('/:id(\d+)', exigirEdicao, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    if (!await radioOu404(pool, id, res)) return;
-
-    const b = req.body || {};
-    await pool.request()
-      .input('id', sql.Int, id)
-      .input('num_serie', sql.NVarChar(60), limpar(b.num_serie))
-      .input('indicativo', sql.NVarChar(20), limpar(b.indicativo))
-      .input('marca', sql.NVarChar(40), limpar(b.marca))
-      .input('modelo', sql.NVarChar(60), limpar(b.modelo))
-      .input('alias_tei', sql.NVarChar(60), limpar(b.alias_tei))
-      .input('radio_id_tei', sql.Int, inteiro(b.radio_id_tei))
-      .input('tie', sql.NVarChar(40), limpar(b.tie))
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .query(`
-        UPDATE dbo.radios
-        SET num_serie = @num_serie, indicativo = @indicativo, marca = @marca, modelo = @modelo,
-            alias_tei = @alias_tei, radio_id_tei = @radio_id_tei, tie = @tie, obs = @obs,
-            atualizado_em = GETDATE()
-        WHERE id = @id`);
-
-    res.json({ ok: true });
-  } catch (err) {
-    if (/UX_radios_num_serie/.test(err.message)) {
-      return res.status(409).json({ error: 'Já existe outro rádio com esse número de série.' });
-    }
-    falhou(res, 'gravar o rádio', err);
-  }
-});
-
-/** Apagar é de administração e apaga o historial todo em cascata (ver migração 001). */
-router.delete('/:id(\d+)', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-    const pool = await poolPromise;
-    if (!await radioOu404(pool, id, res)) return;
-    await pool.request().input('id', sql.Int, id).query('DELETE FROM dbo.radios WHERE id = @id');
-    res.json({ ok: true });
-  } catch (err) {
-    falhou(res, 'apagar o rádio', err);
-  }
-});
-
-// ─── Entregas e devoluções ─────────────────────────────────
-
-/**
- * POST /radios/:id/atribuir — entrega a alguém.
- *
- * Uma atribuição aberta que ainda exista é fechada com a data da nova entrega:
- * no ficheiro de origem, trocar de utilizador era escrever por cima do nome
- * anterior, e o histórico perdia-se. Aqui a entrega anterior fica fechada e
- * legível.
- */
-router.post('/:id(\d+)/atribuir', exigirEdicao, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    const radio = await radioOu404(pool, id, res);
-    if (!radio) return;
-    if (radio.estado === 'abatido') {
-      return res.status(409).json({ error: 'Este rádio está abatido — não pode ser entregue.' });
-    }
-
-    const b = req.body || {};
-    const nome = limpar(b.nome_utilizador);
-    const matricula = inteiro(b.matricula);
-    if (!nome && matricula === null) {
-      return res.status(400).json({ error: 'É preciso a matrícula ou o nome de quem fica com o rádio.' });
-    }
-    const entrega = data(b.data_entrega) || hoje();
-
-    await pool.request()
-      .input('id', sql.Int, id)
-      .input('fim', sql.Date, entrega)
-      .query(`UPDATE dbo.radios_atribuicoes SET data_devolucao = @fim
-              WHERE radio_id = @id AND data_devolucao IS NULL`);
-
-    const r = await pool.request()
-      .input('radio_id', sql.Int, id)
-      .input('matricula', sql.Int, matricula)
-      .input('nome', sql.NVarChar(200), nome)
-      .input('entrega', sql.Date, entrega)
-      .input('guia', sql.NVarChar(60), limpar(b.guia))
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .input('por', sql.NVarChar(120), actor(req))
-      .query(`
-        INSERT INTO dbo.radios_atribuicoes (radio_id, matricula, nome_utilizador, data_entrega, guia, obs, registado_por)
-        OUTPUT INSERTED.id
-        VALUES (@radio_id, @matricula, @nome, @entrega, @guia, @obs, @por)`);
-
-    await recalcularEstado(pool, id);
-    res.status(201).json({ id: r.recordset[0].id });
-  } catch (err) {
-    falhou(res, 'registar a entrega', err);
-  }
-});
-
-/** POST /radios/:id/devolver — fecha a atribuição activa. */
-router.post('/:id(\d+)/devolver', exigirEdicao, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    if (!await radioOu404(pool, id, res)) return;
-
-    const b = req.body || {};
-    const r = await pool.request()
-      .input('id', sql.Int, id)
-      .input('fim', sql.Date, data(b.data_devolucao) || hoje())
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .query(`
-        UPDATE dbo.radios_atribuicoes
-        SET data_devolucao = @fim,
-            obs = CASE WHEN @obs IS NULL THEN obs
-                       WHEN obs IS NULL THEN @obs
-                       ELSE obs + N' · ' + @obs END
-        WHERE radio_id = @id AND data_devolucao IS NULL`);
-
-    if (!r.rowsAffected[0]) {
-      return res.status(409).json({ error: 'Este rádio não está entregue a ninguém.' });
-    }
-    await recalcularEstado(pool, id);
-    res.json({ ok: true });
-  } catch (err) {
-    falhou(res, 'registar a devolução', err);
-  }
-});
-
-// ─── Avarias ───────────────────────────────────────────────
-
-router.post('/:id(\d+)/avarias', exigirEdicao, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    const radio = await radioOu404(pool, id, res);
-    if (!radio) return;
-    if (radio.estado === 'abatido') {
-      return res.status(409).json({ error: 'Este rádio está abatido — não faz sentido registar avarias.' });
-    }
-
-    const b = req.body || {};
-    const r = await pool.request()
-      .input('radio_id', sql.Int, id)
-      .input('tipo', sql.NVarChar(120), limpar(b.tipo_avaria))
-      .input('ordem', sql.VarChar(10), limpar(b.ordem))
-      .input('local', sql.NVarChar(60), limpar(b.localizacao) || 'Aguarda Reparação')
-      .input('registo', sql.Date, data(b.data_registo) || hoje())
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .input('por', sql.NVarChar(120), actor(req))
-      .query(`
-        INSERT INTO dbo.radios_avarias (radio_id, tipo_avaria, ordem, localizacao, data_registo, obs, registado_por)
-        OUTPUT INSERTED.id
-        VALUES (@radio_id, @tipo, @ordem, @local, @registo, @obs, @por)`);
-
-    await recalcularEstado(pool, id);
-    res.status(201).json({ id: r.recordset[0].id });
-  } catch (err) {
-    falhou(res, 'registar a avaria', err);
-  }
-});
-
-/**
- * POST /avarias/:id/reparar — fecha a avaria.
- * `estado` pode ser 'reparada' (volta ao parque) ou 'irreparavel' (fica fechada
- * e o rádio disponível para abate — abater é decisão separada, e de admin).
- */
-router.post('/avarias/:id(\d+)/reparar', exigirEdicao, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const b = req.body || {};
-    const estado = limpar(b.estado) === 'irreparavel' ? 'irreparavel' : 'reparada';
-
-    const pool = await poolPromise;
-    const r = await pool.request()
-      .input('id', sql.Int, id)
-      .input('estado', sql.VarChar(20), estado)
-      .input('fim', sql.Date, data(b.data_reparacao) || hoje())
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .query(`
-        UPDATE dbo.radios_avarias
-        SET estado = @estado, data_reparacao = @fim,
-            obs = CASE WHEN @obs IS NULL THEN obs
-                       WHEN obs IS NULL THEN @obs
-                       ELSE obs + N' · ' + @obs END
-        OUTPUT INSERTED.radio_id
-        WHERE id = @id AND estado = 'aberta'`);
-
-    const linha = r.recordset && r.recordset[0];
-    if (!linha) return res.status(409).json({ error: 'Avaria não encontrada ou já fechada.' });
-
-    await recalcularEstado(pool, linha.radio_id);
-    res.json({ ok: true, radio_id: linha.radio_id });
-  } catch (err) {
-    falhou(res, 'fechar a avaria', err);
-  }
-});
-
-// ─── Abate ─────────────────────────────────────────────────
-
-/**
- * POST /radios/:id/abate — tira o equipamento do parque sem o apagar.
- * A atribuição activa é fechada: um rádio abatido não pode continuar entregue.
- */
-router.post('/:id(\d+)/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    const radio = await radioOu404(pool, id, res);
-    if (!radio) return;
-
-    const b = req.body || {};
-    const quando = data(b.data_abate) || hoje();
-
-    const jaAbatido = await pool.request()
-      .input('id', sql.Int, id)
-      .query('SELECT TOP 1 id FROM dbo.radios_abates WHERE radio_id = @id');
-    if (jaAbatido.recordset.length) {
-      return res.status(409).json({ error: 'Este rádio já está abatido.' });
-    }
-
-    await pool.request()
-      .input('id', sql.Int, id).input('fim', sql.Date, quando)
-      .query('UPDATE dbo.radios_atribuicoes SET data_devolucao = @fim WHERE radio_id = @id AND data_devolucao IS NULL');
-
-    await pool.request()
-      .input('radio_id', sql.Int, id)
-      .input('quando', sql.Date, quando)
-      .input('motivo', sql.NVarChar(200), limpar(b.motivo))
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .input('por', sql.NVarChar(120), actor(req))
-      .query(`INSERT INTO dbo.radios_abates (radio_id, data_abate, motivo, obs, registado_por)
-              VALUES (@radio_id, @quando, @motivo, @obs, @por)`);
-
-    await recalcularEstado(pool, id);
-    res.status(201).json({ ok: true });
-  } catch (err) {
-    falhou(res, 'registar o abate', err);
-  }
-});
-
-/** Anular um abate feito por engano — o rádio volta ao parque. */
-router.delete('/:id(\d+)/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-    const pool = await poolPromise;
-    const r = await pool.request().input('id', sql.Int, id)
-      .query('DELETE FROM dbo.radios_abates WHERE radio_id = @id');
-    if (!r.rowsAffected[0]) return res.status(404).json({ error: 'Este rádio não está abatido.' });
-    await recalcularEstado(pool, id);
-    res.json({ ok: true });
-  } catch (err) {
-    falhou(res, 'anular o abate', err);
   }
 });
 
@@ -661,6 +253,419 @@ router.get('/utilizadores', async (req, res) => {
     res.json(r.recordset);
   } catch (err) {
     falhou(res, 'listar as pessoas', err);
+  }
+});
+
+// ─── Listagem do parque ────────────────────────────────────
+
+/**
+ * GET /radios?q=&estado=&marca=
+ *
+ * `q` procura em série, indicativo, alias, modelo e no nome de quem o tem.
+ * A ordenação é pelo indicativo tratado como número (`TRY_CONVERT`): ordenar o
+ * texto punha o 1000 antes do 99, e o indicativo é lido como número por quem
+ * trabalha com ele. Os que não têm indicativo vão para o fim.
+ */
+router.get('/', async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const pedido = pool.request();
+    const filtros = [];
+
+    const q = limpar(req.query.q);
+    if (q) {
+      pedido.input('q', sql.NVarChar(200), `%${q}%`);
+      filtros.push(`(r.num_serie LIKE @q OR r.indicativo LIKE @q OR r.alias_tei LIKE @q
+                     OR r.modelo LIKE @q OR r.marca LIKE @q OR r.tie LIKE @q
+                     OR a.nome_utilizador LIKE @q OR CAST(a.matricula AS NVARCHAR(20)) LIKE @q)`);
+    }
+    const estado = limpar(req.query.estado);
+    if (estado && ESTADOS.includes(estado)) {
+      pedido.input('estado', sql.VarChar(20), estado);
+      filtros.push('r.estado = @estado');
+    }
+    const marca = limpar(req.query.marca);
+    if (marca) {
+      pedido.input('marca', sql.NVarChar(40), marca);
+      filtros.push('r.marca = @marca');
+    }
+
+    const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
+    const r = await pedido.query(`
+      SELECT TOP 2000
+        r.id, r.num_serie, r.indicativo, r.marca, r.modelo, r.alias_tei, r.radio_id_tei,
+        r.tie, r.estado, r.obs,
+        a.id AS atribuicao_id, a.matricula, a.nome_utilizador, a.data_entrega, a.guia,
+        av.id AS avaria_id, av.tipo_avaria, av.ordem, av.localizacao,
+        ab.data_abate, ab.motivo AS motivo_abate
+      FROM dbo.radios r
+      OUTER APPLY (
+        SELECT TOP 1 * FROM dbo.radios_atribuicoes x
+        WHERE x.radio_id = r.id AND x.data_devolucao IS NULL
+        ORDER BY x.data_entrega DESC, x.id DESC) a
+      OUTER APPLY (
+        SELECT TOP 1 * FROM dbo.radios_avarias x
+        WHERE x.radio_id = r.id AND x.estado = 'aberta'
+        ORDER BY x.id DESC) av
+      OUTER APPLY (
+        SELECT TOP 1 * FROM dbo.radios_abates x
+        WHERE x.radio_id = r.id ORDER BY x.id DESC) ab
+      ${where}
+      ORDER BY
+        CASE WHEN TRY_CONVERT(INT, r.indicativo) IS NULL THEN 1 ELSE 0 END,
+        TRY_CONVERT(INT, r.indicativo),
+        r.indicativo, r.id`);
+
+    res.json(r.recordset);
+  } catch (err) {
+    falhou(res, 'listar os rádios', err);
+  }
+});
+
+/** GET /radios/:id — o equipamento com todo o historial e o que o sistema sabe dele. */
+router.get('/:id', async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    const radio = await radioOu404(pool, id, res);
+    if (!radio) return;
+
+    const [atribuicoes, avarias, abate, sistema] = await Promise.all([
+      pool.request().input('id', sql.Int, id).query(
+        'SELECT * FROM dbo.radios_atribuicoes WHERE radio_id = @id ORDER BY ISNULL(data_entrega, \'1900-01-01\') DESC, id DESC'),
+      pool.request().input('id', sql.Int, id).query(
+        'SELECT * FROM dbo.radios_avarias WHERE radio_id = @id ORDER BY id DESC'),
+      pool.request().input('id', sql.Int, id).query(
+        'SELECT TOP 1 * FROM dbo.radios_abates WHERE radio_id = @id ORDER BY id DESC'),
+      // O cruzamento com o TETRA é por série, e só por série: o alias também dá
+      // um palpite, mas é texto escrito à mão em duas listas diferentes.
+      pool.request().input('serie', sql.NVarChar(60), radio.num_serie).query(
+        'SELECT TOP 1 * FROM dbo.radios_sistema WHERE num_serie IS NOT NULL AND num_serie = @serie'),
+    ]);
+
+    res.json({
+      ...radio,
+      atribuicoes: atribuicoes.recordset,
+      avarias: avarias.recordset,
+      abate: abate.recordset[0] || null,
+      sistema: sistema.recordset[0] || null,
+    });
+  } catch (err) {
+    falhou(res, 'obter o rádio', err);
+  }
+});
+
+// ─── Criar e editar equipamento ────────────────────────────
+
+router.post('/', exigirEdicao, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const num_serie = limpar(b.num_serie);
+    const indicativo = limpar(b.indicativo);
+    if (!num_serie && !indicativo) {
+      return res.status(400).json({ error: 'É preciso pelo menos o número de série ou o indicativo.' });
+    }
+
+    const pool = await poolPromise;
+    if (num_serie) {
+      const dup = await pool.request()
+        .input('s', sql.NVarChar(60), num_serie)
+        .query('SELECT TOP 1 id FROM dbo.radios WHERE num_serie = @s');
+      if (dup.recordset.length) {
+        return res.status(409).json({ error: `Já existe um rádio com o número de série ${num_serie}.`, id: dup.recordset[0].id });
+      }
+    }
+
+    const r = await pool.request()
+      .input('num_serie', sql.NVarChar(60), num_serie)
+      .input('indicativo', sql.NVarChar(20), indicativo)
+      .input('marca', sql.NVarChar(40), limpar(b.marca))
+      .input('modelo', sql.NVarChar(60), limpar(b.modelo))
+      .input('alias_tei', sql.NVarChar(60), limpar(b.alias_tei))
+      .input('radio_id_tei', sql.Int, inteiro(b.radio_id_tei))
+      .input('tie', sql.NVarChar(40), limpar(b.tie))
+      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
+      .query(`
+        INSERT INTO dbo.radios (num_serie, indicativo, marca, modelo, alias_tei, radio_id_tei, tie, obs)
+        OUTPUT INSERTED.id
+        VALUES (@num_serie, @indicativo, @marca, @modelo, @alias_tei, @radio_id_tei, @tie, @obs)`);
+
+    res.status(201).json({ id: r.recordset[0].id });
+  } catch (err) {
+    falhou(res, 'criar o rádio', err);
+  }
+});
+
+router.put('/:id', exigirEdicao, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    if (!await radioOu404(pool, id, res)) return;
+
+    const b = req.body || {};
+    await pool.request()
+      .input('id', sql.Int, id)
+      .input('num_serie', sql.NVarChar(60), limpar(b.num_serie))
+      .input('indicativo', sql.NVarChar(20), limpar(b.indicativo))
+      .input('marca', sql.NVarChar(40), limpar(b.marca))
+      .input('modelo', sql.NVarChar(60), limpar(b.modelo))
+      .input('alias_tei', sql.NVarChar(60), limpar(b.alias_tei))
+      .input('radio_id_tei', sql.Int, inteiro(b.radio_id_tei))
+      .input('tie', sql.NVarChar(40), limpar(b.tie))
+      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
+      .query(`
+        UPDATE dbo.radios
+        SET num_serie = @num_serie, indicativo = @indicativo, marca = @marca, modelo = @modelo,
+            alias_tei = @alias_tei, radio_id_tei = @radio_id_tei, tie = @tie, obs = @obs,
+            atualizado_em = GETDATE()
+        WHERE id = @id`);
+
+    res.json({ ok: true });
+  } catch (err) {
+    if (/UX_radios_num_serie/.test(err.message)) {
+      return res.status(409).json({ error: 'Já existe outro rádio com esse número de série.' });
+    }
+    falhou(res, 'gravar o rádio', err);
+  }
+});
+
+/** Apagar é de administração e apaga o historial todo em cascata (ver migração 001). */
+router.delete('/:id', exigirAdmin, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+    const pool = await poolPromise;
+    if (!await radioOu404(pool, id, res)) return;
+    await pool.request().input('id', sql.Int, id).query('DELETE FROM dbo.radios WHERE id = @id');
+    res.json({ ok: true });
+  } catch (err) {
+    falhou(res, 'apagar o rádio', err);
+  }
+});
+
+// ─── Entregas e devoluções ─────────────────────────────────
+
+/**
+ * POST /radios/:id/atribuir — entrega a alguém.
+ *
+ * Uma atribuição aberta que ainda exista é fechada com a data da nova entrega:
+ * no ficheiro de origem, trocar de utilizador era escrever por cima do nome
+ * anterior, e o histórico perdia-se. Aqui a entrega anterior fica fechada e
+ * legível.
+ */
+router.post('/:id/atribuir', exigirEdicao, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    const radio = await radioOu404(pool, id, res);
+    if (!radio) return;
+    if (radio.estado === 'abatido') {
+      return res.status(409).json({ error: 'Este rádio está abatido — não pode ser entregue.' });
+    }
+
+    const b = req.body || {};
+    const nome = limpar(b.nome_utilizador);
+    const matricula = inteiro(b.matricula);
+    if (!nome && matricula === null) {
+      return res.status(400).json({ error: 'É preciso a matrícula ou o nome de quem fica com o rádio.' });
+    }
+    const entrega = data(b.data_entrega) || hoje();
+
+    await pool.request()
+      .input('id', sql.Int, id)
+      .input('fim', sql.Date, entrega)
+      .query(`UPDATE dbo.radios_atribuicoes SET data_devolucao = @fim
+              WHERE radio_id = @id AND data_devolucao IS NULL`);
+
+    const r = await pool.request()
+      .input('radio_id', sql.Int, id)
+      .input('matricula', sql.Int, matricula)
+      .input('nome', sql.NVarChar(200), nome)
+      .input('entrega', sql.Date, entrega)
+      .input('guia', sql.NVarChar(60), limpar(b.guia))
+      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
+      .input('por', sql.NVarChar(120), actor(req))
+      .query(`
+        INSERT INTO dbo.radios_atribuicoes (radio_id, matricula, nome_utilizador, data_entrega, guia, obs, registado_por)
+        OUTPUT INSERTED.id
+        VALUES (@radio_id, @matricula, @nome, @entrega, @guia, @obs, @por)`);
+
+    await recalcularEstado(pool, id);
+    res.status(201).json({ id: r.recordset[0].id });
+  } catch (err) {
+    falhou(res, 'registar a entrega', err);
+  }
+});
+
+/** POST /radios/:id/devolver — fecha a atribuição activa. */
+router.post('/:id/devolver', exigirEdicao, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    if (!await radioOu404(pool, id, res)) return;
+
+    const b = req.body || {};
+    const r = await pool.request()
+      .input('id', sql.Int, id)
+      .input('fim', sql.Date, data(b.data_devolucao) || hoje())
+      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
+      .query(`
+        UPDATE dbo.radios_atribuicoes
+        SET data_devolucao = @fim,
+            obs = CASE WHEN @obs IS NULL THEN obs
+                       WHEN obs IS NULL THEN @obs
+                       ELSE obs + N' · ' + @obs END
+        WHERE radio_id = @id AND data_devolucao IS NULL`);
+
+    if (!r.rowsAffected[0]) {
+      return res.status(409).json({ error: 'Este rádio não está entregue a ninguém.' });
+    }
+    await recalcularEstado(pool, id);
+    res.json({ ok: true });
+  } catch (err) {
+    falhou(res, 'registar a devolução', err);
+  }
+});
+
+// ─── Avarias ───────────────────────────────────────────────
+
+router.post('/:id/avarias', exigirEdicao, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    const radio = await radioOu404(pool, id, res);
+    if (!radio) return;
+    if (radio.estado === 'abatido') {
+      return res.status(409).json({ error: 'Este rádio está abatido — não faz sentido registar avarias.' });
+    }
+
+    const b = req.body || {};
+    const r = await pool.request()
+      .input('radio_id', sql.Int, id)
+      .input('tipo', sql.NVarChar(120), limpar(b.tipo_avaria))
+      .input('ordem', sql.VarChar(10), limpar(b.ordem))
+      .input('local', sql.NVarChar(60), limpar(b.localizacao) || 'Aguarda Reparação')
+      .input('registo', sql.Date, data(b.data_registo) || hoje())
+      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
+      .input('por', sql.NVarChar(120), actor(req))
+      .query(`
+        INSERT INTO dbo.radios_avarias (radio_id, tipo_avaria, ordem, localizacao, data_registo, obs, registado_por)
+        OUTPUT INSERTED.id
+        VALUES (@radio_id, @tipo, @ordem, @local, @registo, @obs, @por)`);
+
+    await recalcularEstado(pool, id);
+    res.status(201).json({ id: r.recordset[0].id });
+  } catch (err) {
+    falhou(res, 'registar a avaria', err);
+  }
+});
+
+/**
+ * POST /avarias/:id/reparar — fecha a avaria.
+ * `estado` pode ser 'reparada' (volta ao parque) ou 'irreparavel' (fica fechada
+ * e o rádio disponível para abate — abater é decisão separada, e de admin).
+ */
+router.post('/avarias/:id/reparar', exigirEdicao, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const b = req.body || {};
+    const estado = limpar(b.estado) === 'irreparavel' ? 'irreparavel' : 'reparada';
+
+    const pool = await poolPromise;
+    const r = await pool.request()
+      .input('id', sql.Int, id)
+      .input('estado', sql.VarChar(20), estado)
+      .input('fim', sql.Date, data(b.data_reparacao) || hoje())
+      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
+      .query(`
+        UPDATE dbo.radios_avarias
+        SET estado = @estado, data_reparacao = @fim,
+            obs = CASE WHEN @obs IS NULL THEN obs
+                       WHEN obs IS NULL THEN @obs
+                       ELSE obs + N' · ' + @obs END
+        OUTPUT INSERTED.radio_id
+        WHERE id = @id AND estado = 'aberta'`);
+
+    const linha = r.recordset && r.recordset[0];
+    if (!linha) return res.status(409).json({ error: 'Avaria não encontrada ou já fechada.' });
+
+    await recalcularEstado(pool, linha.radio_id);
+    res.json({ ok: true, radio_id: linha.radio_id });
+  } catch (err) {
+    falhou(res, 'fechar a avaria', err);
+  }
+});
+
+// ─── Abate ─────────────────────────────────────────────────
+
+/**
+ * POST /radios/:id/abate — tira o equipamento do parque sem o apagar.
+ * A atribuição activa é fechada: um rádio abatido não pode continuar entregue.
+ */
+router.post('/:id/abate', exigirAdmin, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    const radio = await radioOu404(pool, id, res);
+    if (!radio) return;
+
+    const b = req.body || {};
+    const quando = data(b.data_abate) || hoje();
+
+    const jaAbatido = await pool.request()
+      .input('id', sql.Int, id)
+      .query('SELECT TOP 1 id FROM dbo.radios_abates WHERE radio_id = @id');
+    if (jaAbatido.recordset.length) {
+      return res.status(409).json({ error: 'Este rádio já está abatido.' });
+    }
+
+    await pool.request()
+      .input('id', sql.Int, id).input('fim', sql.Date, quando)
+      .query('UPDATE dbo.radios_atribuicoes SET data_devolucao = @fim WHERE radio_id = @id AND data_devolucao IS NULL');
+
+    await pool.request()
+      .input('radio_id', sql.Int, id)
+      .input('quando', sql.Date, quando)
+      .input('motivo', sql.NVarChar(200), limpar(b.motivo))
+      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
+      .input('por', sql.NVarChar(120), actor(req))
+      .query(`INSERT INTO dbo.radios_abates (radio_id, data_abate, motivo, obs, registado_por)
+              VALUES (@radio_id, @quando, @motivo, @obs, @por)`);
+
+    await recalcularEstado(pool, id);
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    falhou(res, 'registar o abate', err);
+  }
+});
+
+/** Anular um abate feito por engano — o rádio volta ao parque. */
+router.delete('/:id/abate', exigirAdmin, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+    const pool = await poolPromise;
+    const r = await pool.request().input('id', sql.Int, id)
+      .query('DELETE FROM dbo.radios_abates WHERE radio_id = @id');
+    if (!r.rowsAffected[0]) return res.status(404).json({ error: 'Este rádio não está abatido.' });
+    await recalcularEstado(pool, id);
+    res.json({ ok: true });
+  } catch (err) {
+    falhou(res, 'anular o abate', err);
   }
 });
 

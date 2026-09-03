@@ -135,9 +135,11 @@ O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma im
 - Alterações em `server/routes/ativos/` obrigam a **reiniciar o harness**. O
   `permissoes.js` tem uma cache de 10 minutos por utilizador: depois de mexer em
   `colaboradores` ou nos grupos, reiniciar é a única forma de ver o efeito.
-- ⚠️ **Os `:id` nas rotas levam `(\d+)`.** Sem isso, `GET /:id` apanha também o `/sistema`, o
-  `/conferencia` e o `/utilizadores` — que estão escritos mais abaixo no ficheiro — e a
-  resposta passa a ser um "Identificador inválido" que ninguém percebe.
+- ⚠️ **A ordem das rotas nos ficheiros é significativa.** O Express serve a primeira que casa e
+  o `/:id` apanha qualquer palavra, portanto rotas de nome fixo (`/sistema`, `/conferencia`,
+  `/utilizadores`, `/estatisticas`) vão **acima** do `/:id`. Restringir o parâmetro com
+  `/:id(\d+)` **não funciona** nesta versão do Express (4.22): a rota deixa de casar de todo e
+  o pedido morre num "Cannot GET". Já foi tentado; o detalhe do rádio dava 404.
 - O Tailwind e o lucide são **ficheiros locais** em `public/ativos/`, não vêm de CDN.
 - **O `.env` nunca entra no git.** Variáveis novas documentam-se no `.env.example`, sem valores.
 
