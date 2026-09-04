@@ -267,6 +267,122 @@ async function completarRadio(pool, id, campos) {
 // ─── Folhas ────────────────────────────────────────────────
 
 /** Folha `Radios` — o parque e quem o tem. */
+/** O ficheiro que manda sobre QUE equipamentos existem e como se identificam. */
+const MASTER = 'C:\\Apps\\master radios.xlsx';
+
+/**
+ * O master: a lista dos equipamentos e a sua identificação.
+ *
+ * Colunas: ALIAS, S/N, TEI, ISSI, Marca, Modelo. As quatro primeiras são chaves
+ * — 765 valores, 765 distintos em cada uma —, o que faz deste o único ficheiro
+ * da casa em que a identificação não precisa de ser adivinhada.
+ *
+ * Corre PRIMEIRO, antes das folhas do parque: assim, quando elas procuram o
+ * equipamento pelo indicativo, já o encontram aqui em vez de criarem um novo.
+ *
+ * Encontra o rádio por série, senão pelo alias, senão pelo indicativo tirado do
+ * alias — é preciso os três porque o ficheiro do parque escreve as mesmas coisas
+ * de maneiras diferentes ("767ZD6388" onde o master diz "767TZD6388", "LSB PMG
+ * 820 LX" com um espaço a mais). Cruzando pelos três, o master reconhece 774 dos
+ * 788 rádios que já lá estavam.
+ *
+ * ⚠️ **O que o master não conhece NÃO se apaga.** Sobram 14 rádios do ficheiro do
+ * parque que não estão programados no TETRA — 13 com histórico e 4 ainda
+ * entregues a alguém. Apagá-los levava as atribuições atrás.
+ *
+ * ⚠️ **O modelo do master é grosso, e num caso está errado.** Os 715 Sepura vêm
+ * todos como "SC", quando o ficheiro do parque sabe se é SC2020, STP8038/9038 ou
+ * STP9000; e os 50 Motorola vêm numerados em sequência ("MPX 600", "MPX 601",
+ * "MPX 602"…), que é um arrastamento de célula — o modelo é "MPX 600" para todos,
+ * confirmado por quem gere a frota. Por isso o modelo do master só entra quando
+ * não há nada, e nunca substitui um modelo mais específico por um mais genérico.
+ */
+async function importarMaster(pool, resumo) {
+  if (!fs.existsSync(MASTER)) {
+    console.warn(`  ⚠ master não encontrado em ${MASTER} — identificação fica pelas folhas`);
+    return;
+  }
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(MASTER);
+  const ws = wb.worksheets[0];
+
+  for (let i = 2; i <= ws.rowCount; i++) {
+    const r = ws.getRow(i);
+    const alias = texto(r.getCell(1), 60);
+    const num_serie = texto(r.getCell(2), 60);
+    const tie = texto(r.getCell(3), 40);
+    const issi = numero(r.getCell(4));
+    const marca = texto(r.getCell(5), 40);
+    const modeloBruto = texto(r.getCell(6), 60);
+    if (!alias && !num_serie) continue;
+    resumo.master.lidas++;
+
+    // A numeração sequencial dos Motorola é do Excel, não do equipamento: o
+    // modelo é "MPX 600" nos 50. E "SC" sozinho não é modelo, é a família dos
+    // Sepura — escrevê-lo apagava os modelos a sério (SC2020, STP8038/9038,
+    // STP9000) que a folha do parque conhece, ficando 715 rádios a dizer "SC".
+    const modelo = (marca === 'Motorola' && /^MPX\s*\d/i.test(modeloBruto || '')) ? 'MPX 600'
+                 : (/^SC$/i.test(modeloBruto || '') ? null : modeloBruto);
+    const indicativo = indicativoDoAlias(alias);
+
+    let id = null;
+    for (const [coluna, valor] of [['num_serie', num_serie], ['alias_tei', alias]]) {
+      if (id || !valor) continue;
+      const achado = await pool.request().input('v', sql.NVarChar(60), valor)
+        .query(`SELECT TOP 1 id FROM dbo.radios WHERE ${coluna} = @v ORDER BY id`);
+      if (achado.recordset.length) id = achado.recordset[0].id;
+    }
+    if (!id && indicativo) {
+      // Só quando é o único com aquele indicativo: há reatribuições nunca
+      // fechadas no ficheiro do parque, e escolher entre elas era inventar.
+      const achado = await pool.request().input('i', sql.NVarChar(20), indicativo)
+        .query(`SELECT TOP 1 id FROM dbo.radios WHERE indicativo = @i
+                  AND (SELECT COUNT(*) FROM dbo.radios o WHERE o.indicativo = @i) = 1`);
+      if (achado.recordset.length) id = achado.recordset[0].id;
+    }
+
+    if (id) {
+      // A identificação passa a ser a do master. A série só desce se mais
+      // ninguém a tiver — o índice único não perdoa —, e o modelo só preenche
+      // o que estiver vazio.
+      await pool.request()
+        .input('id', sql.Int, id)
+        .input('alias', sql.NVarChar(60), alias)
+        .input('serie', sql.NVarChar(60), num_serie)
+        .input('tie', sql.NVarChar(40), tie)
+        .input('issi', sql.Int, issi)
+        .input('marca', sql.NVarChar(40), marca)
+        .input('modelo', sql.NVarChar(60), modelo)
+        .input('ind', sql.NVarChar(20), indicativo)
+        .query(`UPDATE dbo.radios
+                SET alias_tei    = ISNULL(@alias, alias_tei),
+                    tie          = ISNULL(@tie, tie),
+                    radio_id_tei = ISNULL(@issi, radio_id_tei),
+                    marca        = ISNULL(@marca, marca),
+                    modelo       = ISNULL(modelo, @modelo),
+                    indicativo   = ISNULL(indicativo, @ind),
+                    num_serie    = CASE WHEN @serie IS NOT NULL
+                                         AND NOT EXISTS (SELECT 1 FROM dbo.radios o WHERE o.num_serie = @serie AND o.id <> @id)
+                                    THEN @serie ELSE num_serie END,
+                    atualizado_em = GETDATE()
+                WHERE id = @id`);
+      resumo.master.actualizados++;
+    } else {
+      await pool.request()
+        .input('serie', sql.NVarChar(60), num_serie)
+        .input('ind', sql.NVarChar(20), indicativo)
+        .input('marca', sql.NVarChar(40), marca)
+        .input('modelo', sql.NVarChar(60), modelo)
+        .input('alias', sql.NVarChar(60), alias)
+        .input('issi', sql.Int, issi)
+        .input('tie', sql.NVarChar(40), tie)
+        .query(`INSERT INTO dbo.radios (num_serie, indicativo, marca, modelo, alias_tei, radio_id_tei, tie)
+                VALUES (@serie, @ind, @marca, @modelo, @alias, @issi, @tie)`);
+      resumo.master.criados++;
+    }
+  }
+}
+
 async function importarParque(pool, ws, resumo) {
   for (let i = 2; i <= ws.rowCount; i++) {
     const r = ws.getRow(i);
@@ -613,6 +729,7 @@ async function principal() {
   }
 
   const resumo = {
+    master: { lidas: 0, criados: 0, actualizados: 0 },
     parque: { lidas: 0, criados: 0, atribuicoes: 0, vazias: 0 },
     motorola: { lidas: 0, criados: 0 },
     sistema: { lidas: 0, ligados_por_serie: 0, ligados_por_indicativo: 0, criados_no_parque: 0 },
@@ -634,6 +751,12 @@ async function principal() {
   //
   // Correndo no fim, o TEI é a última palavra: liga o que existe e cria o que
   // falta, e já ninguém procura equipamento depois dele.
+  // O master vem antes de tudo: identifica os equipamentos, para que as folhas
+  // seguintes os encontrem em vez de os criarem outra vez.
+  process.stdout.write('  master radios.xlsx… ');
+  await importarMaster(pool, resumo);
+  console.log('ok');
+
   const ordem = [
     ['Radios', ws => importarParque(pool, ws, resumo)],
     ['Motorola', ws => importarMotorola(pool, ws, resumo)],
