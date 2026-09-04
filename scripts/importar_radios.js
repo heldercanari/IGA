@@ -383,7 +383,30 @@ async function importarMaster(pool, resumo) {
   }
 }
 
+/**
+ * ⚠️ Linhas com a MESMA série mas indicativo diferente (uma tem, a outra não)
+ * são o histórico de reatribuição de UM rádio, não dois — 13 séries repetem-se
+ * na folha por essa razão. Normalmente colapsam sozinhas: a segunda linha
+ * encontra a primeira pelo número de série exacto, em `garantirRadio`.
+ *
+ * Mas isso falha quando o master já identificou esse indicativo com uma série
+ * DIFERENTE (a série "verdadeira" do TETRA, que não é a que está na folha
+ * antiga). Nesse caso a primeira linha (a que tem indicativo) casa com o rádio
+ * do master pelo INDICATIVO — a sua série da folha nunca fica gravada em lado
+ * nenhum, porque o rádio já tem a série do master e essa não se substitui. A
+ * segunda linha (sem indicativo, mesma série) já não tem onde bater: cria um
+ * rádio novo, órfão, com a série da folha. Aconteceu com os indicativos 402,
+ * 657 e 759 — cada corrida repetida piorava, porque a linha COM indicativo
+ * passava a encontrar esse órfão pela série exacta e a "saltar" para lá.
+ *
+ * A correcção fica AQUI, não em `garantirRadio`: um mapa por série, só desta
+ * folha e desta corrida, que faz a segunda linha ir SEMPRE ter com o rádio que
+ * a primeira linha já resolveu — mesmo que esse rádio tenha ficado com outra
+ * série. É assim que duas linhas com a mesma série na folha continuam a ser
+ * sempre o mesmo rádio, corrida após corrida.
+ */
 async function importarParque(pool, ws, resumo) {
+  const idPorSerieNestaFolha = new Map();
   for (let i = 2; i <= ws.rowCount; i++) {
     const r = ws.getRow(i);
     const { num_serie, indicativo, nota } = identidade(r, 1, 2);
@@ -403,7 +426,16 @@ async function importarParque(pool, ws, resumo) {
     // cabeçalho): a coluna só tem 'Guia' ou vazio.
     if (guia && guia.toLowerCase() === 'yes') guia = null;
 
-    const { id, criado } = await garantirRadio(pool, { num_serie, indicativo, marca, modelo, obs });
+    let id, criado;
+    if (num_serie && idPorSerieNestaFolha.has(num_serie)) {
+      id = idPorSerieNestaFolha.get(num_serie);
+      criado = false;
+      // Ainda vale a pena completar o que esta linha souber e a primeira não.
+      await completarRadio(pool, id, { indicativo, marca, modelo, obs });
+    } else {
+      ({ id, criado } = await garantirRadio(pool, { num_serie, indicativo, marca, modelo, obs }));
+      if (num_serie) idPorSerieNestaFolha.set(num_serie, id);
+    }
     resumo.parque.lidas++;
     if (criado) resumo.parque.criados++;
 
