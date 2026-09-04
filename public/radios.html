@@ -110,15 +110,6 @@
         </div>
     </section>
 
-    <!-- Separadores -->
-    <nav class="flex gap-1 mb-4 border-b border-slate-200" role="tablist">
-        <button role="tab" data-aba="parque" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-blue-600 text-blue-700">Parque</button>
-        <button role="tab" data-aba="conferencia" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700">
-            Conferência <span id="pastilhaConferencia" class="ml-1 text-[11px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full hidden"></span>
-        </button>
-        <button role="tab" data-aba="sistema" class="aba px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-700">Sistema TETRA</button>
-    </nav>
-
     <main id="conteudo">
 
         <!-- ─── Parque ─────────────────────────────────────── -->
@@ -158,11 +149,6 @@
                     <table class="w-full text-sm">
                         <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
                             <tr>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Alias</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Indicativo</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Marca</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Estado</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Atribuído</th>
                                 <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
                             </tr>
                         </thead>
@@ -170,70 +156,6 @@
                     </table>
                 </div>
                 <p id="rodapeParque" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
-            </div>
-        </section>
-
-        <!-- ─── Conferência ────────────────────────────────── -->
-        <section id="abaConferencia" class="hidden">
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4">
-                <p class="text-sm text-slate-600 mb-3">
-                    Cruzamento entre as respostas ao questionário e o que está registado. Só conta a
-                    <strong>última resposta</strong> de cada matrícula.
-                </p>
-                <div id="chipsConferencia" class="flex flex-wrap gap-2"></div>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
-                    <table class="w-full text-sm">
-                        <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
-                            <tr>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Matrícula</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nome</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Respondeu</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Declarou</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Registado</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Baterias</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Situação</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabelaConferencia" class="divide-y divide-slate-100"></tbody>
-                    </table>
-                </div>
-                <p id="rodapeConferencia" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
-            </div>
-        </section>
-
-        <!-- ─── Sistema TETRA ──────────────────────────────── -->
-        <section id="abaSistema" class="hidden">
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
-                <div class="flex-1 min-w-[240px]">
-                    <label for="procuraSistema" class="block text-xs font-semibold text-slate-600 mb-1">Procurar no registo do sistema</label>
-                    <input id="procuraSistema" type="search" placeholder="Alias, nº de série ou ID de rádio…"
-                           class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <p class="text-xs text-slate-500 max-w-md">
-                    Exportação da consola TETRA: o que está <em>programado</em>, não quem o tem.
-                    Só leitura — quem manda aqui é a consola.
-                </p>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
-                    <table class="w-full text-sm">
-                        <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
-                            <tr>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Alias</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Indicativo</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nº de série</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">ID de rádio</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Grupo de conversação</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Perfil</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">No parque</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabelaSistema" class="divide-y divide-slate-100"></tbody>
-                    </table>
-                </div>
-                <p id="rodapeSistema" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
             </div>
         </section>
     </main>
@@ -283,10 +205,7 @@ const API_MODULO = '/api/iga';    // /permissoes é do módulo, não do tipo
 const estado = {
   permissoes: null,
   radios: [],
-  conferencia: null,
   filtros: { q: '', estado: '', marca: '' },
-  filtroConferencia: '',
-  aba: 'parque',
   radioAberto: null,
 };
 
@@ -354,14 +273,6 @@ const ESTADOS = {
   abatido:    { texto: 'Abatido',    classe: 'bg-slate-200 text-slate-700' },
 };
 
-const SITUACOES = {
-  ok:            { texto: 'Confere',            classe: 'bg-emerald-100 text-emerald-800', ajuda: 'O que declarou bate certo com o registo.' },
-  divergente:    { texto: 'Indicativo diferente', classe: 'bg-amber-100 text-amber-800',   ajuda: 'Declarou ter um rádio com outro número.' },
-  nao_registado: { texto: 'Sem registo',        classe: 'bg-red-100 text-red-800',         ajuda: 'Diz que tem rádio, mas não há registo de entrega.' },
-  nao_declarado: { texto: 'Não declarado',      classe: 'bg-purple-100 text-purple-800',   ajuda: 'Está-lhe entregue um rádio, mas respondeu que não tem.' },
-  sem_resposta:  { texto: 'Sem resposta',       classe: 'bg-slate-200 text-slate-700',     ajuda: 'Tem rádio entregue e não respondeu ao questionário.' },
-};
-
 function etiqueta(mapa, chave) {
   const e = mapa[chave] || { texto: chave || '—', classe: 'bg-slate-100 text-slate-600' };
   return `<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${e.classe}">${esc(e.texto)}</span>`;
@@ -384,27 +295,17 @@ function desenharParque() {
   const corpo = document.getElementById('tabelaParque');
 
   if (!estado.radios.length) {
-    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">
+    corpo.innerHTML = `<tr><td colspan="1" class="px-4 py-10 text-center text-slate-400 text-sm">
       Nenhum rádio encontrado com estes filtros.</td></tr>`;
     document.getElementById('rodapeParque').textContent = '';
     return;
   }
 
+  // A pedido, a tabela fica só com a coluna de Acções — sem colunas de dados —
+  // enquanto se aguarda o ficheiro que vai definir a estrutura nova. O detalhe
+  // (ver, no botão do olho) continua completo, com tudo o que o rádio tem.
   corpo.innerHTML = estado.radios.map(r => {
-    const entregue = r.matricula || r.nome_utilizador
-      ? `${esc(r.nome_utilizador || '—')}${r.matricula ? ` <span class="text-slate-400">· ${esc(r.matricula)}</span>` : ''}`
-      : '<span class="text-slate-300">—</span>';
-    // A tabela mostra só o que identifica o rádio e a quem está: alias,
-    // indicativo, marca, estado e utilizador. O número de série, o modelo, o ID
-    // de rádio, o grupo de conversação e o perfil estão na ficha — são o detalhe
-    // de UM equipamento, não critério para percorrer 400 linhas. Pelo mesmo
-    // motivo não vem aqui o tipo de avaria nem a data de entrega.
     return `<tr class="hover:bg-slate-50">
-      <td class="px-3 py-2 text-slate-700">${r.alias_tei ? esc(r.alias_tei) : '<span class="text-slate-300">—</span>'}</td>
-      <td class="px-3 py-2 font-bold text-slate-900">${esc(r.indicativo || '—')}</td>
-      <td class="px-3 py-2 text-slate-800">${esc(r.marca || '—')}</td>
-      <td class="px-3 py-2">${etiqueta(ESTADOS, r.estado)}</td>
-      <td class="px-3 py-2">${entregue}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
         <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${r.id}" title="Ver detalhe" aria-label="Ver detalhe do rádio ${esc(r.indicativo || r.num_serie || '')}">
           <i data-lucide="eye" class="w-4 h-4"></i></button>
@@ -592,7 +493,6 @@ function dadosDoModal() {
 /** Recarrega o que está à vista depois de uma alteração. */
 async function refrescar(idDetalhe) {
   await Promise.all([carregarParque(), carregarEstatisticas()]);
-  estado.conferencia = null;             // fica por recarregar: só se lá voltarem
   if (idDetalhe) await abrirDetalhe(idDetalhe);
 }
 
@@ -743,72 +643,6 @@ function modalEquipamento(r) {
   });
 }
 
-// ─── Conferência ───────────────────────────────────────────
-
-async function carregarConferencia() {
-  if (!estado.conferencia) estado.conferencia = await pedir('/conferencia');
-  const { resumo, linhas } = estado.conferencia;
-
-  document.getElementById('chipsConferencia').innerHTML =
-    [['', 'Tudo', Object.values(resumo).reduce((a, b) => a + b, 0)]]
-      .concat(Object.keys(SITUACOES).map(k => [k, SITUACOES[k].texto, resumo[k] || 0]))
-      .map(([chave, texto, n]) => `
-        <button data-situacao="${chave}" title="${chave ? esc(SITUACOES[chave].ajuda) : 'Todas as pessoas conferidas'}"
-          class="px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-            estado.filtroConferencia === chave ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}">
-          ${esc(texto)} <span class="opacity-70">${n}</span>
-        </button>`).join('');
-
-  const visiveis = estado.filtroConferencia
-    ? linhas.filter(l => l.situacao === estado.filtroConferencia) : linhas;
-
-  document.getElementById('tabelaConferencia').innerHTML = visiveis.length ? visiveis.map(l => `
-    <tr class="hover:bg-slate-50">
-      <td class="px-3 py-2 font-mono text-xs text-slate-600">${esc(l.matricula)}</td>
-      <td class="px-3 py-2 text-slate-800">${esc(l.nome || '—')}</td>
-      <td class="px-3 py-2 text-slate-500 whitespace-nowrap">${l.data_resposta ? dataPt(l.data_resposta) : '<span class="text-slate-300">não respondeu</span>'}</td>
-      <td class="px-3 py-2">${l.tem_radio === 'SIM'
-          ? `<span class="font-bold text-slate-800">${esc(l.indicativo_declarado || 'sim, sem número')}</span>`
-          : l.tem_radio === 'NAO' ? '<span class="text-slate-500">não tem</span>' : '<span class="text-slate-300">—</span>'}</td>
-      <td class="px-3 py-2">${l.indicativos_registados
-          ? `<span class="font-bold text-slate-800">${esc(l.indicativos_registados)}</span>`
-          : '<span class="text-slate-300">nada registado</span>'}</td>
-      <td class="px-3 py-2 text-slate-600">${l.baterias === null || l.baterias === undefined ? '—' : esc(l.baterias)}</td>
-      <td class="px-3 py-2">${etiqueta(SITUACOES, l.situacao)}</td>
-    </tr>`).join('')
-    : `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">Nada nesta situação.</td></tr>`;
-
-  document.getElementById('rodapeConferencia').textContent =
-    `${visiveis.length} de ${linhas.length} pessoas · ${resumo.ok || 0} conferem`;
-
-  const porResolver = (resumo.divergente || 0) + (resumo.nao_registado || 0) + (resumo.nao_declarado || 0);
-  const pastilha = document.getElementById('pastilhaConferencia');
-  pastilha.textContent = porResolver;
-  pastilha.classList.toggle('hidden', porResolver === 0);
-}
-
-// ─── Sistema TETRA ─────────────────────────────────────────
-
-async function carregarSistema(q) {
-  const linhas = await pedir('/sistema' + (q ? '?q=' + encodeURIComponent(q) : ''));
-  const seriesDoParque = new Set(estado.radios.filter(r => r.num_serie).map(r => r.num_serie));
-  document.getElementById('tabelaSistema').innerHTML = linhas.length ? linhas.map(s => `
-    <tr class="hover:bg-slate-50">
-      <td class="px-3 py-2 text-slate-800">${esc(s.alias || '—')}</td>
-      <td class="px-3 py-2 font-bold text-slate-900">${esc(s.indicativo || '—')}</td>
-      <td class="px-3 py-2 font-mono text-xs text-slate-600">${esc(s.num_serie || '—')}</td>
-      <td class="px-3 py-2 text-slate-600">${esc(s.radio_id || '—')}</td>
-      <td class="px-3 py-2 text-slate-600">${esc(s.talkgroup || '—')}</td>
-      <td class="px-3 py-2 text-slate-500 text-xs">${esc(s.perfil_capacidades || '—')}</td>
-      <td class="px-3 py-2">${seriesDoParque.has(s.num_serie)
-        ? '<span class="text-emerald-700 text-xs font-bold">sim</span>'
-        : '<span class="text-slate-400 text-xs">não consta</span>'}</td>
-    </tr>`).join('')
-    : `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">Nada encontrado.</td></tr>`;
-  document.getElementById('rodapeSistema').textContent =
-    `${linhas.length} equipamentos no sistema${linhas.length === 1000 ? ' (mostra os primeiros 1000)' : ''}`;
-}
-
 // ─── Exportação ────────────────────────────────────────────
 
 /**
@@ -835,21 +669,6 @@ function exportarCSV() {
 
 // ─── Ligações ──────────────────────────────────────────────
 
-function mudarAba(nome) {
-  estado.aba = nome;
-  for (const b of document.querySelectorAll('.aba')) {
-    const activa = b.dataset.aba === nome;
-    b.className = `aba px-4 py-2.5 text-sm font-semibold border-b-2 ${
-      activa ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`;
-    b.setAttribute('aria-selected', activa ? 'true' : 'false');
-  }
-  document.getElementById('abaParque').classList.toggle('hidden', nome !== 'parque');
-  document.getElementById('abaConferencia').classList.toggle('hidden', nome !== 'conferencia');
-  document.getElementById('abaSistema').classList.toggle('hidden', nome !== 'sistema');
-  if (nome === 'conferencia') carregarConferencia().catch(e => toast(e.message, 'erro'));
-  if (nome === 'sistema') carregarSistema(document.getElementById('procuraSistema').value).catch(e => toast(e.message, 'erro'));
-}
-
 let temporizadorProcura = null;
 function procuraAdiada(fn) {
   clearTimeout(temporizadorProcura);
@@ -857,13 +676,12 @@ function procuraAdiada(fn) {
 }
 
 document.addEventListener('click', async ev => {
-  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-abate],[data-reparar],[data-situacao],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnAnularAbate,#btnNovo,#btnExportar,.aba');
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-abate],[data-reparar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnAnularAbate,#btnNovo,#btnExportar');
   if (!alvo) return;
   const d = alvo.dataset;
   try {
     if (alvo.matches('[data-fechar]')) return fecharPainel();
     if (alvo.matches('[data-fechar-modal]')) return fecharModal();
-    if (alvo.matches('.aba')) return mudarAba(d.aba);
     if (alvo.id === 'btnExportar') return exportarCSV();
     if (alvo.id === 'btnNovo') return modalEquipamento(null);
     if (alvo.id === 'btnEditar') return modalEquipamento(estado.radioAberto);
@@ -879,14 +697,9 @@ document.addEventListener('click', async ev => {
     if (d.avaria) return modalAvaria(Number(d.avaria));
     if (d.abate) return modalAbate(Number(d.abate));
     if (d.reparar) return modalReparar(Number(d.reparar));
-    if (d.situacao !== undefined && alvo.closest('#chipsConferencia')) {
-      estado.filtroConferencia = estado.filtroConferencia === d.situacao ? '' : d.situacao;
-      return carregarConferencia();
-    }
     if (d.estado !== undefined && alvo.classList.contains('cartao')) {
       estado.filtros.estado = d.estado;
       document.getElementById('filtroEstado').value = d.estado;
-      mudarAba('parque');
       return carregarParque();
     }
   } catch (err) {
@@ -921,9 +734,6 @@ document.getElementById('filtroMarca').addEventListener('change', ev => {
   estado.filtros.marca = ev.target.value;
   carregarParque().catch(e => toast(e.message, 'erro'));
 });
-document.getElementById('procuraSistema').addEventListener('input', ev => {
-  procuraAdiada(() => carregarSistema(ev.target.value.trim()).catch(e => toast(e.message, 'erro')));
-});
 
 document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape') return;
@@ -952,9 +762,6 @@ async function arrancar() {
 
   try {
     await Promise.all([carregarEstatisticas(), carregarParque()]);
-    // A pastilha do separador tem de estar certa antes de lá irem.
-    await carregarConferencia();
-    mudarAba('parque');
   } catch (err) {
     toast(err.message, 'erro');
   }

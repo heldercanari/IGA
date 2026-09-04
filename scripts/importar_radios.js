@@ -94,6 +94,18 @@ function texto(cell, max) {
   return max ? s.slice(0, max) : s;
 }
 
+/**
+ * Um número de série: nunca tem espaço a sério. Quando aparece um, é ruído de
+ * transcrição — o mesmo rádio 290 está como "157TDN1582" no master e
+ * "157TDN 1582" no TEI, e sem isto as duas fontes falam de aparelhos
+ * diferentes: o índice único deixa de os ligar, e a aba Sistema TETRA mostra
+ * "não consta" para um rádio que está mesmo no parque.
+ */
+function serie(cell, max) {
+  const v = texto(cell, max);
+  return v ? v.replace(/\s+/g, '') : v;
+}
+
 function numero(cell) {
   const v = valor(cell);
   if (v === null || v instanceof Date) return null;
@@ -163,14 +175,20 @@ function indicativoDoAlias(aliasOuNumero) {
  *    da vez em que alguém colou uma linha da exportação TEI por cima. O alias
  *    diz o indicativo lá dentro, portanto lê-se de lá.
  *
- * Uma série a sério não tem espaços nem passa de 24 caracteres — é o que
- * distingue `3PN601013G4M87P` de uma frase.
+ * Uma série a sério tem no máximo um espaço perdido (ex. "157TDN 1582" — o
+ * mesmo rádio que noutra folha está "157TDN1582") e não passa de 24
+ * caracteres sem eles; uma frase de nota tem muitos espaços. Por isso a
+ * classificação conta os espaços ANTES de os tirar — só depois de confirmado
+ * que é série é que se limpa, com `serie()`, para bater certo com as outras
+ * fontes.
  */
 function identidade(linha, colSerie, colIndicativo) {
   const serieBruta = texto(linha.getCell(colSerie));
   const indBruto = texto(linha.getCell(colIndicativo));
   const indicativo = indicativoDoAlias(indBruto);
-  const num_serie = (serieBruta && !/\s/.test(serieBruta) && serieBruta.length <= 24) ? serieBruta : null;
+  const espacos = serieBruta ? (serieBruta.match(/\s+/g) || []).length : 0;
+  const semEspacos = serieBruta ? serieBruta.replace(/\s+/g, '') : null;
+  const num_serie = (semEspacos && espacos <= 1 && semEspacos.length <= 24) ? semEspacos : null;
   if (indicativo || num_serie) return { num_serie, indicativo, nota: null };
   const frase = [serieBruta, indBruto].find(v => v && v.length > 20 && /\s/.test(v));
   return { num_serie: null, indicativo: null, nota: frase || null };
@@ -309,7 +327,7 @@ async function importarMaster(pool, resumo) {
   for (let i = 2; i <= ws.rowCount; i++) {
     const r = ws.getRow(i);
     const alias = texto(r.getCell(1), 60);
-    const num_serie = texto(r.getCell(2), 60);
+    const num_serie = serie(r.getCell(2), 60);
     const tie = texto(r.getCell(3), 40);
     const issi = numero(r.getCell(4));
     const marca = texto(r.getCell(5), 40);
@@ -469,7 +487,7 @@ async function importarMotorola(pool, ws, resumo) {
     const r = ws.getRow(i);
     const marca = texto(r.getCell(1), 40);
     const modelo = texto(r.getCell(2), 60);
-    const num_serie = texto(r.getCell(3), 60);
+    const num_serie = serie(r.getCell(3), 60);
     const tie = texto(r.getCell(4), 40);
     if (!num_serie) continue;
     const { criado } = await garantirRadio(pool, { num_serie, marca: marca || 'Motorola', modelo, tie });
@@ -479,20 +497,17 @@ async function importarMotorola(pool, ws, resumo) {
 }
 
 /**
- * Folha `TEI` — a exportação da consola do sistema TETRA.
- * Substituída por inteiro: é uma fotografia, não um diário.
- */
-/**
  * O registo do sistema TETRA: a folha `TEI` do `Radios apanhado.xlsx` (48
  * colunas — alias, série, ID de rádio, grupo de conversação, perfil,
  * capacidades). É a única fonte; não há ficheiro à parte a preferir-lhe.
+ * Substituída por inteiro a cada corrida: é uma fotografia, não um diário.
  */
 async function importarSistema(pool, ws, resumo) {
   await pool.request().query('DELETE FROM dbo.radios_sistema');
   for (let i = 2; i <= ws.rowCount; i++) {
     const r = ws.getRow(i);
     const alias = texto(r.getCell(1), 60);
-    const num_serie = texto(r.getCell(3), 60);
+    const num_serie = serie(r.getCell(3), 60);
     if (!alias && !num_serie) continue;
     await pool.request()
       .input('alias', sql.NVarChar(60), alias)
@@ -585,7 +600,7 @@ async function importarAvarias(pool, wsAvariados, wsFolha1, resumo) {
     for (let i = 2; i <= wsFolha1.rowCount; i++) {
       const r = wsFolha1.getRow(i);
       const alias = texto(r.getCell(1), 60);
-      const num_serie = texto(r.getCell(3), 60);
+      const num_serie = serie(r.getCell(3), 60);
       const ind = indicativoDoAlias(alias);
       if (!ind || !num_serie) continue;   // legenda ('P- Programação') e '?' caem aqui
       porIndicativo.set(ind, {
