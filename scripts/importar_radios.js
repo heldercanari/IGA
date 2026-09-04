@@ -1,75 +1,72 @@
 'use strict';
 
 /**
- * Importador do `Radios apanhado.xlsx` → base de dados.
+ * Importador de `master radios.xlsx` + `atribuidos.xlsx` → base de dados.
  *
- *   npm run importar-radios                    (procura o ficheiro no OneDrive da PM)
- *   npm run importar-radios -- "C:\caminho\Radios apanhado.xlsx"
- *   XLSX_RADIOS="C:\..." npm run importar-radios
+ *   npm run importar-radios
  *
- * Corre as vezes que forem precisas: os equipamentos são procurados por número
- * de série e, na falta dele, por indicativo — não duplica o que já lá está. As
- * duas folhas que são fotografias de outro sistema (`TEI` e `Quest`) são
- * substituídas por inteiro a cada corrida, porque uma exportação nova é a
- * verdade nova, não um acrescento à antiga.
+ * Substitui por completo o importador anterior (`Radios apanhado.xlsx`, 7
+ * folhas, e as fontes que vieram depois — `TEI radios.xlsx`, a folha TEI
+ * antiga). Essas fontes deixaram de se usar; ficam só estas duas, cada uma com
+ * o seu papel:
  *
- * ⚠️ O que este importador NÃO faz, de propósito:
+ *   `master radios.xlsx`  → QUE equipamento existe e como se identifica
+ *                            (ALIAS, S/N, TEI, ISSI, Marca, Modelo). É o único
+ *                            ficheiro da casa com chaves a sério — 765 valores
+ *                            únicos em cada coluna.
+ *   `atribuidos.xlsx`     → QUEM tem cada rádio agora (email, utilizador,
+ *                            matrícula, Nº rádio). Não traz datas — a entrega se
+ *                            é gravada com `DATA_ATRIBUICAO_PADRAO`, que é
+ *                            quando este levantamento foi feito, não quando a
+ *                            entrega aconteceu de facto (isso perdeu-se).
  *
- *  - **Não inventa números de série.** 93 dos 339 rádios da folha principal não
- *    o têm; ficam com `num_serie` NULL e é assim que devem aparecer no ecrã.
- *  - **Não deduplica indicativos.** 357, 847, 849, 855, 875 e 885 aparecem duas
- *    vezes na origem, com equipamento diferente. São reatribuições reais que
- *    nunca foram fechadas — juntá-las apagava um dos dois rádios.
- *  - **Não lê as três últimas linhas da folha `Radios`.** São notas escritas à
- *    mão ("Existem mais 7 rádios Sepura novos em armazém"), não equipamentos.
- *    Ficam contadas no resumo, em `notas`, para não desaparecerem sem se dar
- *    por isso.
- *  - **Não corrige as linhas com lixo colado à direita.** Três linhas da folha
- *    principal têm uma linha da exportação TEI colada a partir da coluna K; só
- *    se lêem as colunas A..J e o resto é ignorado.
+ * ⚠️ Não há avarias nem abates nestas duas fontes. Correr este importador não
+ * mexe em `radios_avarias` nem `radios_abates` — ficam como o ecrã os deixou,
+ * até haver ficheiro próprio para isso.
+ *
+ * Corre as vezes que forem precisas: o equipamento é encontrado pelo alias (a
+ * chave do master) e a atribuição por (rádio, matrícula) — não duplica. Ao
+ * contrário do importador anterior, este NÃO tem `--limpar`: não apaga nada em
+ * bloco. Uma segunda corrida sincroniza — fecha o que já não bate e abre o que
+ * é novo — em vez de destruir e recomeçar.
  */
 
 require('dotenv').config();
 
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 const ExcelJS = require('exceljs');
 const { poolPromise, sql } = require('../db');
 
-// ─── Encontrar o ficheiro ──────────────────────────────────
-
-const NOME_FICHEIRO = 'Radios apanhado.xlsx';
+const MASTER = 'C:\\Apps\\master radios.xlsx';
+const ATRIBUIDOS = 'C:\\Apps\\atribuidos.xlsx';
 
 /**
- * `--limpar` esvazia o parque antes de importar. É para desenvolvimento: numa
- * base a sério apaga o que foi registado pelo ecrã desde a última importação.
+ * O `atribuidos.xlsx` não traz datas — só diz quem tem o quê agora. Esta é a
+ * data combinada para todas as entregas desta importação (decisão do
+ * utilizador, 2026-09-04): representa quando o levantamento foi feito, não uma
+ * data de entrega real que o ficheiro simplesmente não tem.
  */
-const LIMPAR = process.argv.includes('--limpar');
-const CAMINHO_ARG = process.argv.slice(2).find(a => !a.startsWith('--'));
+const DATA_ATRIBUICAO_PADRAO = '2025-10-01';
 
-/** O ficheiro vive no OneDrive sincronizado da CML, cujo nome tem a autarquia lá dentro. */
-function localizarFicheiro() {
-  const dado = CAMINHO_ARG || process.env.XLSX_RADIOS;
-  if (dado) {
-    if (!fs.existsSync(dado)) throw new Error(`Ficheiro não encontrado: ${dado}`);
-    return dado;
-  }
-  const casa = os.homedir();
-  const candidatos = fs.readdirSync(casa)
-    .filter(n => n.toLowerCase().startsWith('onedrive'))
-    .map(n => path.join(casa, n, NOME_FICHEIRO))
-    .concat([path.join(casa, NOME_FICHEIRO)]);
-  const achado = candidatos.find(p => fs.existsSync(p));
-  if (!achado) {
-    throw new Error(`Não encontrei o "${NOME_FICHEIRO}". Passa o caminho: npm run importar-radios -- "C:\\caminho\\${NOME_FICHEIRO}"`);
-  }
-  return achado;
-}
+/**
+ * Os dois rádios em que o ficheiro tem duas pessoas DIFERENTES a reclamá-los —
+ * não é correcção (nomes diferentes, não a mesma pessoa duas vezes) — ficam de
+ * fora dos dois lados até se resolver na origem (decisão do utilizador).
+ */
+const RADIOS_EM_CONFLITO = new Set(['445', '380']);
+
+/**
+ * Sara Ferreira (152235) está na folha com "34" — não existe rádio nenhum com
+ * esse indicativo no master, e o utilizador confirmou que o valor certo é
+ * "834". Mas o 834 já está legitimamente entregue a outra pessoa (Luís
+ * Teixeira, 136939), vinda desta mesma folha — ligar lá a Sara também criava
+ * um SEGUNDO conflito por cima do primeiro, e não é a este importador que cabe
+ * decidir qual dos dois fica. Trata-se como os outros conflitos: fica de fora,
+ * visível no resumo, até se resolver na origem.
+ */
+const MATRICULAS_EM_CONFLITO = new Set([152235]);
 
 // ─── Leitura de células ────────────────────────────────────
 
-/** O valor de uma célula do exceljs em texto simples, ou null. */
 function valor(cell) {
   if (!cell) return null;
   let v = cell.value;
@@ -90,20 +87,8 @@ function valor(cell) {
 function texto(cell, max) {
   const v = valor(cell);
   if (v === null) return null;
-  const s = (v instanceof Date) ? v.toISOString().slice(0, 10) : String(v).trim();
+  const s = (v instanceof Date) ? v.toISOString().slice(0, 10) : String(v).replace(/\u00a0/g, ' ').trim();
   return max ? s.slice(0, max) : s;
-}
-
-/**
- * Um número de série: nunca tem espaço a sério. Quando aparece um, é ruído de
- * transcrição — o mesmo rádio 290 está como "157TDN1582" no master e
- * "157TDN 1582" no TEI, e sem isto as duas fontes falam de aparelhos
- * diferentes: o índice único deixa de os ligar, e a aba Sistema TETRA mostra
- * "não consta" para um rádio que está mesmo no parque.
- */
-function serie(cell, max) {
-  const v = texto(cell, max);
-  return v ? v.replace(/\s+/g, '') : v;
 }
 
 function numero(cell) {
@@ -113,213 +98,47 @@ function numero(cell) {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
-const MESES = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-
 /**
- * Data em ISO, ou null.
- *
- * A folha principal traz datas a sério (o Excel guarda-as como número); a folha
- * `Quest` traz 374 das 400 em texto "17-Oct-25", que é o que o Forms exportou.
- * As duas passam por aqui. O que não se conseguir ler fica null — e na
- * conferência guarda-se também o texto cru ao lado.
+ * Um número de série nunca tem espaço a sério. Quando aparece um, é ruído de
+ * transcrição — tira-se sempre, para bater certo entre fontes.
  */
-function dataISO(cell) {
-  const v = valor(cell);
-  if (v === null) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v).trim();
-  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m = /^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/.exec(s);          // 17-Oct-25
-  if (m) {
-    const mes = MESES[m[2].toLowerCase()];
-    if (mes) return `20${m[3]}-${String(mes).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-  }
-  m = /^(\d{1,2})[/](\d{1,2})[/](\d{4})$/.exec(s);          // 17/10/2025
-  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-  return null;
+function serie(cell, max) {
+  const v = texto(cell, max);
+  return v ? v.replace(/\s+/g, '') : v;
 }
 
 /**
- * Indicativo escondido num alias do TETRA.
- *   "LSB PMG317 LX" → "317"     "LSB PMG 776 LX" → "776"     "303" → "303"
- *   "LSB PM2CM LX", "LSB PMC01 LX", "P- Programação" → null
- *
- * Só se aceita o prefixo PMG (rádios de agente) e o número puro. `PM551` e
- * `PMC01` são consolas e viaturas: o número que lá está não é um indicativo de
- * rádio de mão e cruzá-lo com a folha principal dava pares errados.
+ * Indicativo escondido num alias do TETRA: "LSB PMG842 LX" → "842",
+ * "LSB PMG 834 LX" (com espaço) → "834". Só o prefixo PMG conta como
+ * indicativo de rádio de mão — PMC/PM2CM/PMV são consolas, despachos e
+ * viaturas, e o número que trazem não é um indicativo de agente.
  */
-function indicativoDoAlias(aliasOuNumero) {
-  if (!aliasOuNumero) return null;
-  const s = String(aliasOuNumero).trim();
-  if (/^\d{1,4}$/.test(s)) return s;
-  const m = /\bPMG\s*(\d{1,4})\b/i.exec(s);
+function indicativoDoAlias(alias) {
+  if (!alias) return null;
+  const m = /\bPMG\s*(\d{1,4})\b/i.exec(String(alias));
   return m ? m[1] : null;
 }
 
-/**
- * Série e indicativo de uma linha, já normalizados — e a nota, quando a linha
- * afinal não é um equipamento.
- *
- * Duas armadilhas do ficheiro passam por aqui:
- *
- *  - **As linhas de nota estão em células unidas** (`A339:I339` e companhia), e
- *    o leitor devolve o MESMO texto em todas as colunas da união. Sem este
- *    filtro, "Existem mais 7 rádios Secura 2120 sem número" entrava como um
- *    rádio cujo indicativo, marca, modelo E nome de utilizador eram essa frase
- *    — foi exactamente o que aconteceu na primeira importação. As frases ficam
- *    em `resumo.notas`, que é impresso no fim: são 39 rádios em armazém que o
- *    ficheiro conta mas não lista, e alguém tem de os registar um a um.
- *
- *  - **Há uma linha cujo indicativo é o alias do sistema** ('LSB PMG452 LX'),
- *    da vez em que alguém colou uma linha da exportação TEI por cima. O alias
- *    diz o indicativo lá dentro, portanto lê-se de lá.
- *
- * Uma série a sério tem no máximo um espaço perdido (ex. "157TDN 1582" — o
- * mesmo rádio que noutra folha está "157TDN1582") e não passa de 24
- * caracteres sem eles; uma frase de nota tem muitos espaços. Por isso a
- * classificação conta os espaços ANTES de os tirar — só depois de confirmado
- * que é série é que se limpa, com `serie()`, para bater certo com as outras
- * fontes.
- */
-function identidade(linha, colSerie, colIndicativo) {
-  const serieBruta = texto(linha.getCell(colSerie));
-  const indBruto = texto(linha.getCell(colIndicativo));
-  const indicativo = indicativoDoAlias(indBruto);
-  const espacos = serieBruta ? (serieBruta.match(/\s+/g) || []).length : 0;
-  const semEspacos = serieBruta ? serieBruta.replace(/\s+/g, '') : null;
-  const num_serie = (semEspacos && espacos <= 1 && semEspacos.length <= 24) ? semEspacos : null;
-  if (indicativo || num_serie) return { num_serie, indicativo, nota: null };
-  const frase = [serieBruta, indBruto].find(v => v && v.length > 20 && /\s/.test(v));
-  return { num_serie: null, indicativo: null, nota: frase || null };
+/** Todos os números soltos num texto — normalmente um só, às vezes mais do
+ *  que um quando o campo é composto ("643 (comando) / 349 (Paços do Concelho)"). */
+function numerosDoTexto(bruto) {
+  if (!bruto) return [];
+  return bruto.match(/\d+/g) || [];
 }
 
-// ─── Escrita ───────────────────────────────────────────────
+// ─── Master: identificação ─────────────────────────────────
 
 /**
- * Encontra ou cria o rádio. A série manda; o indicativo é o plano B.
- * Devolve { id, criado }.
- */
-async function garantirRadio(pool, { num_serie, indicativo, marca, modelo, alias_tei, radio_id_tei, tie, obs }) {
-  if (num_serie) {
-    const r = await pool.request().input('s', sql.NVarChar(60), num_serie)
-      .query('SELECT TOP 1 id FROM dbo.radios WHERE num_serie = @s');
-    if (r.recordset.length) {
-      await completarRadio(pool, r.recordset[0].id, { indicativo, marca, modelo, alias_tei, radio_id_tei, tie, obs });
-      return { id: r.recordset[0].id, criado: false };
-    }
-  }
-  if (indicativo) {
-    // Sem série na folha, o indicativo é o que identifica. Prefere-se o registo
-    // que também não tem série; se não houver, aceita-se um que tenha — mas só
-    // quando é o ÚNICO com aquele indicativo.
-    //
-    // ⚠️ A segunda metade desta regra é o que torna a importação repetível. A
-    // versão anterior exigia `num_serie IS NULL` sempre, o que fazia sentido
-    // enquanto ninguém preenchia séries. Depois de o passo do TETRA passar a
-    // preenchê-las, correr o importador segunda vez deixava de encontrar esses
-    // rádios e criava um duplicado de cada um — 123 rádios, 27 avarias e 14
-    // abates a mais numa única corrida repetida. Aceitar o único candidato com
-    // série fecha esse buraco sem reabrir o antigo: com dois ou mais rádios a
-    // partilhar o indicativo (as reatribuições nunca fechadas) continua a não se
-    // adivinhar, e cria-se registo novo.
-    const r = await pool.request().input('i', sql.NVarChar(20), indicativo)
-      .query(`SELECT TOP 1 id FROM dbo.radios
-              WHERE indicativo = @i
-                AND (num_serie IS NULL
-                     OR (SELECT COUNT(*) FROM dbo.radios o WHERE o.indicativo = @i) = 1)
-              ORDER BY CASE WHEN num_serie IS NULL THEN 0 ELSE 1 END, id`);
-    if (r.recordset.length) {
-      await completarRadio(pool, r.recordset[0].id, { num_serie, marca, modelo, alias_tei, radio_id_tei, tie, obs });
-      return { id: r.recordset[0].id, criado: false };
-    }
-  }
-
-  const r = await pool.request()
-    .input('num_serie', sql.NVarChar(60), num_serie || null)
-    .input('indicativo', sql.NVarChar(20), indicativo || null)
-    .input('marca', sql.NVarChar(40), marca || null)
-    .input('modelo', sql.NVarChar(60), modelo || null)
-    .input('alias_tei', sql.NVarChar(60), alias_tei || null)
-    .input('radio_id_tei', sql.Int, radio_id_tei ?? null)
-    .input('tie', sql.NVarChar(40), tie || null)
-    .input('obs', sql.NVarChar(sql.MAX), obs || null)
-    .query(`INSERT INTO dbo.radios (num_serie, indicativo, marca, modelo, alias_tei, radio_id_tei, tie, obs)
-            OUTPUT INSERTED.id
-            VALUES (@num_serie, @indicativo, @marca, @modelo, @alias_tei, @radio_id_tei, @tie, @obs)`);
-  return { id: r.recordset[0].id, criado: true };
-}
-
-/**
- * Preenche os campos que estiverem vazios, sem nunca escrever por cima do que
- * já lá está: numa segunda corrida, o que foi corrigido no ecrã fica.
- * A série é a excepção vigiada — só entra se mais nenhum rádio a tiver, senão
- * o índice único rejeitava a linha toda.
- */
-async function completarRadio(pool, id, campos) {
-  const p = pool.request().input('id', sql.Int, id);
-  const sets = [];
-  for (const [col, tipo, v] of [
-    ['indicativo', sql.NVarChar(20), campos.indicativo],
-    ['marca', sql.NVarChar(40), campos.marca],
-    ['modelo', sql.NVarChar(60), campos.modelo],
-    ['alias_tei', sql.NVarChar(60), campos.alias_tei],
-    ['radio_id_tei', sql.Int, campos.radio_id_tei],
-    ['tie', sql.NVarChar(40), campos.tie],
-    ['obs', sql.NVarChar(sql.MAX), campos.obs],
-  ]) {
-    if (v === null || v === undefined || v === '') continue;
-    p.input(col, tipo, v);
-    sets.push(`${col} = ISNULL(${col}, @${col})`);
-  }
-  if (campos.num_serie) {
-    p.input('num_serie', sql.NVarChar(60), campos.num_serie);
-    sets.push(`num_serie = CASE WHEN num_serie IS NULL
-                                 AND NOT EXISTS (SELECT 1 FROM dbo.radios o WHERE o.num_serie = @num_serie)
-                            THEN @num_serie ELSE num_serie END`);
-  }
-  if (!sets.length) return;
-  await p.query(`UPDATE dbo.radios SET ${sets.join(', ')}, atualizado_em = GETDATE() WHERE id = @id`);
-}
-
-// ─── Folhas ────────────────────────────────────────────────
-
-/** Folha `Radios` — o parque e quem o tem. */
-/** O ficheiro que manda sobre QUE equipamentos existem e como se identificam. */
-const MASTER = 'C:\\Apps\\master radios.xlsx';
-
-/**
- * O master: a lista dos equipamentos e a sua identificação.
+ * Encontra ou cria o rádio, e traz a identificação do master para cima dele.
  *
- * Colunas: ALIAS, S/N, TEI, ISSI, Marca, Modelo. As quatro primeiras são chaves
- * — 765 valores, 765 distintos em cada uma —, o que faz deste o único ficheiro
- * da casa em que a identificação não precisa de ser adivinhada.
- *
- * Corre PRIMEIRO, antes das folhas do parque: assim, quando elas procuram o
- * equipamento pelo indicativo, já o encontram aqui em vez de criarem um novo.
- *
- * Encontra o rádio por série, senão pelo alias, senão pelo indicativo tirado do
- * alias — é preciso os três porque o ficheiro do parque escreve as mesmas coisas
- * de maneiras diferentes ("767ZD6388" onde o master diz "767TZD6388", "LSB PMG
- * 820 LX" com um espaço a mais). Cruzando pelos três, o master reconhece 774 dos
- * 788 rádios que já lá estavam.
- *
- * ⚠️ **O que o master não conhece NÃO se apaga.** Sobram 14 rádios do ficheiro do
- * parque que não estão programados no TETRA — 13 com histórico e 4 ainda
- * entregues a alguém. Apagá-los levava as atribuições atrás.
- *
- * ⚠️ **O modelo do master é grosso, e num caso está errado.** Os 715 Sepura vêm
- * todos como "SC", quando o ficheiro do parque sabe se é SC2020, STP8038/9038 ou
- * STP9000; e os 50 Motorola vêm numerados em sequência ("MPX 600", "MPX 601",
- * "MPX 602"…), que é um arrastamento de célula — o modelo é "MPX 600" para todos,
- * confirmado por quem gere a frota. Por isso o modelo do master só entra quando
- * não há nada, e nunca substitui um modelo mais específico por um mais genérico.
+ * A procura é por alias (chave forte do master) e depois por série; só cria de
+ * novo se nenhuma bater. O modelo tem duas correcções, confirmadas por quem
+ * gere a frota: os 50 Motorola vêm numerados em sequência no ficheiro
+ * ("MPX 600", "MPX 601", "MPX 602"…) — é arrastamento de célula do Excel, o
+ * modelo é "MPX 600" nos 50; e "SC" sozinho não é modelo nenhum, é a família
+ * dos Sepura — gravá-lo apagava um modelo mais específico que já lá estivesse.
  */
 async function importarMaster(pool, resumo) {
-  if (!fs.existsSync(MASTER)) {
-    console.warn(`  ⚠ master não encontrado em ${MASTER} — identificação fica pelas folhas`);
-    return;
-  }
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(MASTER);
   const ws = wb.worksheets[0];
@@ -335,34 +154,32 @@ async function importarMaster(pool, resumo) {
     if (!alias && !num_serie) continue;
     resumo.master.lidas++;
 
-    // A numeração sequencial dos Motorola é do Excel, não do equipamento: o
-    // modelo é "MPX 600" nos 50. E "SC" sozinho não é modelo, é a família dos
-    // Sepura — escrevê-lo apagava os modelos a sério (SC2020, STP8038/9038,
-    // STP9000) que a folha do parque conhece, ficando 715 rádios a dizer "SC".
     const modelo = (marca === 'Motorola' && /^MPX\s*\d/i.test(modeloBruto || '')) ? 'MPX 600'
                  : (/^SC$/i.test(modeloBruto || '') ? null : modeloBruto);
     const indicativo = indicativoDoAlias(alias);
 
     let id = null;
-    for (const [coluna, valor] of [['num_serie', num_serie], ['alias_tei', alias]]) {
-      if (id || !valor) continue;
-      const achado = await pool.request().input('v', sql.NVarChar(60), valor)
-        .query(`SELECT TOP 1 id FROM dbo.radios WHERE ${coluna} = @v ORDER BY id`);
-      if (achado.recordset.length) id = achado.recordset[0].id;
+    if (alias) {
+      const r1 = await pool.request().input('v', sql.NVarChar(60), alias)
+        .query('SELECT TOP 1 id FROM dbo.radios WHERE alias_tei = @v');
+      if (r1.recordset.length) id = r1.recordset[0].id;
+    }
+    if (!id && num_serie) {
+      const r2 = await pool.request().input('v', sql.NVarChar(60), num_serie)
+        .query('SELECT TOP 1 id FROM dbo.radios WHERE num_serie = @v');
+      if (r2.recordset.length) id = r2.recordset[0].id;
     }
     if (!id && indicativo) {
-      // Só quando é o único com aquele indicativo: há reatribuições nunca
-      // fechadas no ficheiro do parque, e escolher entre elas era inventar.
-      const achado = await pool.request().input('i', sql.NVarChar(20), indicativo)
+      // Cobre o rádio que o atribuidos.xlsx criou em bruto (sem ficha) numa
+      // corrida anterior, para o master o vir completar em vez de duplicar —
+      // só quando é o único com esse indicativo, como em todo o lado nesta casa.
+      const r3 = await pool.request().input('i', sql.NVarChar(20), indicativo)
         .query(`SELECT TOP 1 id FROM dbo.radios WHERE indicativo = @i
                   AND (SELECT COUNT(*) FROM dbo.radios o WHERE o.indicativo = @i) = 1`);
-      if (achado.recordset.length) id = achado.recordset[0].id;
+      if (r3.recordset.length) id = r3.recordset[0].id;
     }
 
     if (id) {
-      // A identificação passa a ser a do master. A série só desce se mais
-      // ninguém a tiver — o índice único não perdoa —, e o modelo só preenche
-      // o que estiver vazio.
       await pool.request()
         .input('id', sql.Int, id)
         .input('alias', sql.NVarChar(60), alias)
@@ -372,17 +189,17 @@ async function importarMaster(pool, resumo) {
         .input('marca', sql.NVarChar(40), marca)
         .input('modelo', sql.NVarChar(60), modelo)
         .input('ind', sql.NVarChar(20), indicativo)
-        .query(`UPDATE dbo.radios
-                SET alias_tei    = ISNULL(@alias, alias_tei),
-                    tie          = ISNULL(@tie, tie),
-                    radio_id_tei = ISNULL(@issi, radio_id_tei),
-                    marca        = ISNULL(@marca, marca),
-                    modelo       = ISNULL(modelo, @modelo),
-                    indicativo   = ISNULL(indicativo, @ind),
-                    num_serie    = CASE WHEN @serie IS NOT NULL
-                                         AND NOT EXISTS (SELECT 1 FROM dbo.radios o WHERE o.num_serie = @serie AND o.id <> @id)
-                                    THEN @serie ELSE num_serie END,
-                    atualizado_em = GETDATE()
+        .query(`UPDATE dbo.radios SET
+                  alias_tei     = ISNULL(@alias, alias_tei),
+                  tie           = ISNULL(@tie, tie),
+                  radio_id_tei  = ISNULL(@issi, radio_id_tei),
+                  marca         = ISNULL(@marca, marca),
+                  modelo        = ISNULL(modelo, @modelo),
+                  indicativo    = ISNULL(indicativo, @ind),
+                  num_serie     = CASE WHEN num_serie IS NULL AND @serie IS NOT NULL
+                                        AND NOT EXISTS (SELECT 1 FROM dbo.radios o WHERE o.num_serie = @serie AND o.id <> @id)
+                                   THEN @serie ELSE num_serie END,
+                  atualizado_em = GETDATE()
                 WHERE id = @id`);
       resumo.master.actualizados++;
     } else {
@@ -401,402 +218,134 @@ async function importarMaster(pool, resumo) {
   }
 }
 
+// ─── Atribuídos: quem tem o quê ────────────────────────────
+
+/** O rádio desse indicativo — do master; se não existir, cria ficha mínima. */
+async function radioDoIndicativo(pool, indicativo, resumo) {
+  const achado = await pool.request().input('i', sql.NVarChar(20), indicativo)
+    .query('SELECT TOP 1 id FROM dbo.radios WHERE indicativo = @i');
+  if (achado.recordset.length) return achado.recordset[0].id;
+
+  const criado = await pool.request()
+    .input('ind', sql.NVarChar(20), indicativo)
+    .input('obs', sql.NVarChar(sql.MAX), 'Só consta no atribuidos.xlsx; sem ficha no master.')
+    .query(`INSERT INTO dbo.radios (indicativo, obs) OUTPUT INSERTED.id VALUES (@ind, @obs)`);
+  resumo.atribuidos.radios_criados++;
+  return criado.recordset[0].id;
+}
+
 /**
- * ⚠️ Linhas com a MESMA série mas indicativo diferente (uma tem, a outra não)
- * são o histórico de reatribuição de UM rádio, não dois — 13 séries repetem-se
- * na folha por essa razão. Normalmente colapsam sozinhas: a segunda linha
- * encontra a primeira pelo número de série exacto, em `garantirRadio`.
+ * Sincroniza as entregas de UMA pessoa com o que o ficheiro diz que ela tem
+ * agora — em vez de só acrescentar. Fecha o que já não bate (mudou de rádio, ou
+ * deixou de o ter) e abre o que falta; o que já está correcto fica intocado.
+ * É o que torna uma segunda corrida segura: não duplica, e uma reatribuição
+ * futura fecha a entrega antiga sozinha.
  *
- * Mas isso falha quando o master já identificou esse indicativo com uma série
- * DIFERENTE (a série "verdadeira" do TETRA, que não é a que está na folha
- * antiga). Nesse caso a primeira linha (a que tem indicativo) casa com o rádio
- * do master pelo INDICATIVO — a sua série da folha nunca fica gravada em lado
- * nenhum, porque o rádio já tem a série do master e essa não se substitui. A
- * segunda linha (sem indicativo, mesma série) já não tem onde bater: cria um
- * rádio novo, órfão, com a série da folha. Aconteceu com os indicativos 402,
- * 657 e 759 — cada corrida repetida piorava, porque a linha COM indicativo
- * passava a encontrar esse órfão pela série exacta e a "saltar" para lá.
- *
- * A correcção fica AQUI, não em `garantirRadio`: um mapa por série, só desta
- * folha e desta corrida, que faz a segunda linha ir SEMPRE ter com o rádio que
- * a primeira linha já resolveu — mesmo que esse rádio tenha ficado com outra
- * série. É assim que duas linhas com a mesma série na folha continuam a ser
- * sempre o mesmo rádio, corrida após corrida.
+ * Normalmente `indicativos` tem um elemento só; o caso composto ("643/349",
+ * a mesma pessoa com dois rádios consoante o local) tem dois — os dois ficam
+ * simultaneamente entregues, e é por isso que este é o único sítio que trata
+ * de MAIS do que uma entrega de cada vez para a mesma pessoa.
  */
-async function importarParque(pool, ws, resumo) {
-  const idPorSerieNestaFolha = new Map();
-  for (let i = 2; i <= ws.rowCount; i++) {
-    const r = ws.getRow(i);
-    const { num_serie, indicativo, nota } = identidade(r, 1, 2);
-    if (nota) { resumo.notas.push(nota); continue; }
-    if (!num_serie && !indicativo) { resumo.parque.vazias++; continue; }
+async function sincronizarEntregas(pool, pessoa, indicativos, resumo) {
+  const idsAlvo = [];
+  const vistos = new Set();
+  for (const ind of indicativos) {
+    const id = await radioDoIndicativo(pool, ind, resumo);
+    if (vistos.has(id)) continue;
+    vistos.add(id);
+    idsAlvo.push(id);
+  }
+  if (!idsAlvo.length) { resumo.atribuidos.sem_radio++; return; }
 
-    const marca = texto(r.getCell(3), 40);
-    const modelo = texto(r.getCell(4), 60);
-    const matricula = numero(r.getCell(5));
-    const nome = texto(r.getCell(6), 200);
-    const entrega = dataISO(r.getCell(7));
-    const devolucao = dataISO(r.getCell(8));
-    let guia = texto(r.getCell(9), 60);
-    const obs = texto(r.getCell(10));
+  const abertas = await pool.request().input('mat', sql.Int, pessoa.matricula)
+    .query('SELECT id, radio_id FROM dbo.radios_atribuicoes WHERE matricula = @mat AND data_devolucao IS NULL');
 
-    // 'Yes' na coluna da guia é salpico da linha TEI colada à direita (ver o
-    // cabeçalho): a coluna só tem 'Guia' ou vazio.
-    if (guia && guia.toLowerCase() === 'yes') guia = null;
+  for (const a of abertas.recordset) {
+    if (idsAlvo.includes(a.radio_id)) continue;
+    await pool.request().input('id', sql.Int, a.id).input('fim', sql.Date, DATA_ATRIBUICAO_PADRAO)
+      .query('UPDATE dbo.radios_atribuicoes SET data_devolucao = @fim WHERE id = @id');
+  }
 
-    let id, criado;
-    if (num_serie && idPorSerieNestaFolha.has(num_serie)) {
-      id = idPorSerieNestaFolha.get(num_serie);
-      criado = false;
-      // Ainda vale a pena completar o que esta linha souber e a primeira não.
-      await completarRadio(pool, id, { indicativo, marca, modelo, obs });
-    } else {
-      ({ id, criado } = await garantirRadio(pool, { num_serie, indicativo, marca, modelo, obs }));
-      if (num_serie) idPorSerieNestaFolha.set(num_serie, id);
-    }
-    resumo.parque.lidas++;
-    if (criado) resumo.parque.criados++;
-
-    if (matricula === null && !nome) continue;
-
-    const jaTem = await pool.request()
-      .input('rid', sql.Int, id).input('mec', sql.Int, matricula).input('nome', sql.NVarChar(200), nome)
-      .query(`SELECT TOP 1 id FROM dbo.radios_atribuicoes
-              WHERE radio_id = @rid
-                AND (matricula = @mec OR (matricula IS NULL AND @mec IS NULL))
-                AND (nome_utilizador = @nome OR (nome_utilizador IS NULL AND @nome IS NULL))`);
-    if (jaTem.recordset.length) continue;
-
+  const jaTem = new Set(abertas.recordset.filter(a => idsAlvo.includes(a.radio_id)).map(a => a.radio_id));
+  for (const radioId of idsAlvo) {
+    if (jaTem.has(radioId)) continue;
     await pool.request()
-      .input('rid', sql.Int, id)
-      .input('mec', sql.Int, matricula)
-      .input('nome', sql.NVarChar(200), nome)
-      .input('entrega', sql.Date, entrega)
-      .input('devolucao', sql.Date, devolucao)
-      .input('guia', sql.NVarChar(60), guia)
-      .input('obs', sql.NVarChar(sql.MAX), obs)
-      .query(`INSERT INTO dbo.radios_atribuicoes (radio_id, matricula, nome_utilizador, data_entrega, data_devolucao, guia, obs, registado_por)
-              VALUES (@rid, @mec, @nome, @entrega, @devolucao, @guia, @obs, N'importação')`);
-    resumo.parque.atribuicoes++;
+      .input('rid', sql.Int, radioId)
+      .input('mat', sql.Int, pessoa.matricula)
+      .input('nome', sql.NVarChar(200), pessoa.nome)
+      .input('entrega', sql.Date, DATA_ATRIBUICAO_PADRAO)
+      .query(`INSERT INTO dbo.radios_atribuicoes (radio_id, matricula, nome_utilizador, data_entrega, registado_por)
+              VALUES (@rid, @mat, @nome, @entrega, N'importação')`);
+    resumo.atribuidos.atribuicoes++;
   }
 }
 
-/** Folha `Motorola` — os MXP600 novos, com série e TIE, ainda sem indicativo. */
-async function importarMotorola(pool, ws, resumo) {
+async function importarAtribuicoes(pool, resumo) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(ATRIBUIDOS);
+  const ws = wb.worksheets[0];
+
+  const linhas = [];
   for (let i = 2; i <= ws.rowCount; i++) {
     const r = ws.getRow(i);
-    const marca = texto(r.getCell(1), 40);
-    const modelo = texto(r.getCell(2), 60);
-    const num_serie = serie(r.getCell(3), 60);
-    const tie = texto(r.getCell(4), 40);
-    if (!num_serie) continue;
-    const { criado } = await garantirRadio(pool, { num_serie, marca: marca || 'Motorola', modelo, tie });
-    resumo.motorola.lidas++;
-    if (criado) resumo.motorola.criados++;
+    const email = texto(r.getCell(1), 200);
+    const nome = texto(r.getCell(2), 200);
+    const matricula = numero(r.getCell(3));
+    const radioBruto = texto(r.getCell(4), 200);
+    if (!email && !nome && !matricula && !radioBruto) continue;
+    linhas.push({ linha: i, email, nome, matricula, radioBruto });
   }
-}
+  resumo.atribuidos.lidas = linhas.length;
 
-/**
- * O registo do sistema TETRA: a folha `TEI` do `Radios apanhado.xlsx` (48
- * colunas — alias, série, ID de rádio, grupo de conversação, perfil,
- * capacidades). É a única fonte; não há ficheiro à parte a preferir-lhe.
- * Substituída por inteiro a cada corrida: é uma fotografia, não um diário.
- */
-async function importarSistema(pool, ws, resumo) {
-  await pool.request().query('DELETE FROM dbo.radios_sistema');
-  for (let i = 2; i <= ws.rowCount; i++) {
-    const r = ws.getRow(i);
-    const alias = texto(r.getCell(1), 60);
-    const num_serie = serie(r.getCell(3), 60);
-    if (!alias && !num_serie) continue;
-    await pool.request()
-      .input('alias', sql.NVarChar(60), alias)
-      .input('indicativo', sql.NVarChar(20), indicativoDoAlias(alias))
-      .input('grupo', sql.NVarChar(60), texto(r.getCell(2), 60))
-      .input('serie', sql.NVarChar(60), num_serie)
-      .input('rid', sql.Int, numero(r.getCell(4)))
-      .input('talkgroup', sql.NVarChar(60), texto(r.getCell(25), 60))
-      .input('perfil', sql.NVarChar(60), texto(r.getCell(13), 60))
-      .input('interconnect', sql.NVarChar(40), texto(r.getCell(15), 40))
-      .input('duplex', sql.VarChar(5), texto(r.getCell(11), 5))
-      .input('escuta', sql.VarChar(5), texto(r.getCell(26), 5))
-      .input('pstn', sql.VarChar(5), texto(r.getCell(30), 5))
-      .query(`INSERT INTO dbo.radios_sistema
-                (alias, indicativo, security_group, num_serie, radio_id, talkgroup,
-                 perfil_capacidades, interconnect, full_duplex, escuta_ambiente, acesso_pstn)
-              VALUES (@alias, @indicativo, @grupo, @serie, @rid, @talkgroup,
-                      @perfil, @interconnect, @duplex, @escuta, @pstn)`);
-    resumo.sistema.lidas++;
+  // Fora os rádios em conflito verdadeiro — as duas pessoas de cada lado —
+  // e as pessoas cuja linha, por si só, já leva a um conflito (ver MATRICULAS_EM_CONFLITO).
+  const semConflito = linhas.filter(l => {
+    const emConflito = numerosDoTexto(l.radioBruto).some(n => RADIOS_EM_CONFLITO.has(n))
+      || (l.matricula != null && MATRICULAS_EM_CONFLITO.has(l.matricula));
+    if (emConflito) resumo.atribuidos.em_conflito++;
+    return !emConflito;
+  });
+
+  // "A última linha vale": agrupar por matrícula, o Map guarda só a última
+  // escrita — cobre as pessoas que aparecem duas vezes com rádios diferentes.
+  const porMatricula = new Map();
+  let comMatricula = 0;
+  for (const l of semConflito) {
+    if (l.matricula == null) continue;
+    comMatricula++;
+    porMatricula.set(l.matricula, l);
   }
+  resumo.atribuidos.duplicadas = comMatricula - porMatricula.size;
 
-  // ── O sistema entra todo no parque ─────────────────────
-  // O alias é a coluna principal do parque, portanto nenhum equipamento
-  // programado no TETRA pode ficar de fora. São três passos, e a ordem importa:
-  // ligar pela série, ligar pelo indicativo, e só depois criar o que sobrar —
-  // ao contrário, criavam-se duplicados de rádios que já lá estavam.
-
-  // 1. Pela série, que é a chave forte: identifica o aparelho sem ambiguidade.
-  const porSerie = await pool.request().query(`
-    UPDATE r SET r.alias_tei = ISNULL(r.alias_tei, s.alias),
-                 r.radio_id_tei = ISNULL(r.radio_id_tei, s.radio_id),
-                 r.atualizado_em = GETDATE()
-    FROM dbo.radios r
-    INNER JOIN dbo.radios_sistema s ON s.num_serie = r.num_serie
-    WHERE r.num_serie IS NOT NULL AND (r.alias_tei IS NULL OR r.radio_id_tei IS NULL)`);
-  resumo.sistema.ligados_por_serie = porSerie.rowsAffected[0];
-
-  // 2. Pelo indicativo, para os 132 rádios que não têm série e por isso o passo
-  //    anterior não apanha. Só quando o indicativo é ÚNICO dos dois lados: no
-  //    parque há indicativos repetidos (reatribuições nunca fechadas) e ligar um
-  //    alias a dois rádios diferentes era inventar. A série do sistema também
-  //    desce, mas só se mais nenhum rádio a tiver — senão viola o índice único.
-  const porIndicativo = await pool.request().query(`
-    WITH sis AS (
-      SELECT indicativo, MIN(alias) AS alias, MIN(radio_id) AS radio_id, MIN(num_serie) AS num_serie
-      FROM dbo.radios_sistema WHERE indicativo IS NOT NULL
-      GROUP BY indicativo HAVING COUNT(*) = 1
-    ),
-    par AS (
-      SELECT indicativo FROM dbo.radios WHERE indicativo IS NOT NULL
-      GROUP BY indicativo HAVING COUNT(*) = 1
-    )
-    UPDATE r SET r.alias_tei    = ISNULL(r.alias_tei, sis.alias),
-                 r.radio_id_tei = ISNULL(r.radio_id_tei, sis.radio_id),
-                 r.num_serie    = CASE WHEN r.num_serie IS NULL
-                                        AND NOT EXISTS (SELECT 1 FROM dbo.radios o WHERE o.num_serie = sis.num_serie)
-                                   THEN sis.num_serie ELSE r.num_serie END,
-                 r.atualizado_em = GETDATE()
-    FROM dbo.radios r
-    INNER JOIN par ON par.indicativo = r.indicativo
-    INNER JOIN sis ON sis.indicativo = r.indicativo
-    WHERE r.alias_tei IS NULL`);
-  resumo.sistema.ligados_por_indicativo = porIndicativo.rowsAffected[0];
-
-  // 3. O que continua a não constar entra como equipamento novo. Vem sem marca
-  //    nem modelo — a exportação do TETRA não os traz —, e leva a proveniência
-  //    em `obs` para não se confundir com o que veio do ficheiro do parque.
-  //    Nem todos são rádios de mão: os alias sem indicativo (PMC01, PM2CM,
-  //    PM551) são consolas, despachos e viaturas.
-  const criados = await pool.request().query(`
-    INSERT INTO dbo.radios (num_serie, indicativo, alias_tei, radio_id_tei, obs)
-    SELECT s.num_serie, s.indicativo, s.alias, s.radio_id,
-           N'Veio do registo TETRA; não constava do ficheiro do parque.'
-    FROM dbo.radios_sistema s
-    WHERE NOT EXISTS (SELECT 1 FROM dbo.radios r WHERE r.num_serie = s.num_serie)
-      AND NOT EXISTS (SELECT 1 FROM dbo.radios r WHERE r.alias_tei = s.alias)`);
-  resumo.sistema.criados_no_parque = criados.rowsAffected[0];
-}
-
-/**
- * Folhas `Radios Avariados` + `Folha1` — a mesma lista vista de dois lados.
- * A primeira identifica por indicativo; a segunda traz o número de série e o
- * alias do sistema para os mesmos equipamentos. Lêem-se as duas: o que a
- * segunda acrescenta é a série que faltava.
- */
-async function importarAvarias(pool, wsAvariados, wsFolha1, resumo) {
-  const porIndicativo = new Map();
-
-  if (wsFolha1) {
-    for (let i = 2; i <= wsFolha1.rowCount; i++) {
-      const r = wsFolha1.getRow(i);
-      const alias = texto(r.getCell(1), 60);
-      const num_serie = serie(r.getCell(3), 60);
-      const ind = indicativoDoAlias(alias);
-      if (!ind || !num_serie) continue;   // legenda ('P- Programação') e '?' caem aqui
-      porIndicativo.set(ind, {
-        num_serie,
-        alias_tei: /PMG/i.test(alias) ? alias : null,
-        marca: texto(r.getCell(4), 40),
-        ordem: texto(r.getCell(6), 10),
-        localizacao: texto(r.getCell(7), 60),
-        tipo: texto(r.getCell(8), 120),
-      });
-      resumo.folha1.lidas++;
-    }
-  }
-
-  for (let i = 2; i <= wsAvariados.rowCount; i++) {
-    const r = wsAvariados.getRow(i);
-    const { num_serie, indicativo, nota } = identidade(r, 1, 2);
-    if (nota) { resumo.notas.push(nota); continue; }
-    if (!indicativo) continue;
-    const extra = porIndicativo.get(indicativo) || {};
-
-    const { id } = await garantirRadio(pool, {
-      num_serie: num_serie || extra.num_serie || null,
-      indicativo,
-      marca: texto(r.getCell(3), 40) || extra.marca || null,
-      modelo: texto(r.getCell(4), 60),
-      alias_tei: extra.alias_tei || null,
-    });
-    resumo.avariados.lidas++;
-
-    const tipo = texto(r.getCell(11), 120) || extra.tipo || null;
-    const ordem = texto(r.getCell(9), 10) || extra.ordem || null;
-    const local = texto(r.getCell(10), 60) || extra.localizacao || 'Aguarda Reparação';
-
-    const aberta = await pool.request().input('rid', sql.Int, id)
-      .query(`SELECT TOP 1 id FROM dbo.radios_avarias WHERE radio_id = @rid AND estado = 'aberta'`);
-    if (aberta.recordset.length) continue;
-
-    await pool.request()
-      .input('rid', sql.Int, id)
-      .input('tipo', sql.NVarChar(120), tipo)
-      .input('ordem', sql.VarChar(10), ordem ? ordem.toUpperCase() : null)
-      .input('local', sql.NVarChar(60), local)
-      .query(`INSERT INTO dbo.radios_avarias (radio_id, tipo_avaria, ordem, localizacao, estado, registado_por)
-              VALUES (@rid, @tipo, @ordem, @local, 'aberta', N'importação')`);
-    resumo.avariados.avarias++;
-  }
-}
-
-/** Folha `Radios - Abate`. */
-async function importarAbates(pool, ws, resumo) {
-  for (let i = 2; i <= ws.rowCount; i++) {
-    const r = ws.getRow(i);
-    const { num_serie, indicativo, nota } = identidade(r, 1, 2);
-    if (nota) { resumo.notas.push(nota); continue; }
-    if (!indicativo) continue;
-    const { id } = await garantirRadio(pool, {
-      num_serie,
-      indicativo,
-      marca: texto(r.getCell(3), 40),
-      modelo: texto(r.getCell(4), 60),
-    });
-    resumo.abates.lidas++;
-
-    const ja = await pool.request().input('rid', sql.Int, id)
-      .query('SELECT TOP 1 id FROM dbo.radios_abates WHERE radio_id = @rid');
-    if (ja.recordset.length) continue;
-
-    await pool.request()
-      .input('rid', sql.Int, id)
-      .input('motivo', sql.NVarChar(200), texto(r.getCell(10), 200))
-      .query(`INSERT INTO dbo.radios_abates (radio_id, motivo, registado_por)
-              VALUES (@rid, @motivo, N'importação')`);
-    resumo.abates.abatidos++;
-  }
-}
-
-/** Folha `Quest` — as respostas ao questionário. Substituída por inteiro. */
-async function importarConferencia(pool, ws, resumo) {
-  await pool.request().query('DELETE FROM dbo.radios_conferencia');
-  for (let i = 2; i <= ws.rowCount; i++) {
-    const r = ws.getRow(i);
-    const nome = texto(r.getCell(5), 200);
-    const matricula = numero(r.getCell(6));
-    if (!nome && matricula === null) continue;
-
-    // "SIM" / "NÃO" / "Não" na origem — sem acentos nem maiúsculas à sorte.
-    const bruto = texto(r.getCell(7), 10);
-    const tem = bruto ? (bruto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().startsWith('S') ? 'SIM' : 'NAO') : null;
-
-    await pool.request()
-      .input('origem', sql.Int, numero(r.getCell(1)))
-      .input('dt', sql.Date, dataISO(r.getCell(3)) || dataISO(r.getCell(2)))
-      .input('dtxt', sql.NVarChar(40), texto(r.getCell(3), 40) || texto(r.getCell(2), 40))
-      .input('email', sql.NVarChar(200), texto(r.getCell(4), 200))
-      .input('nome', sql.NVarChar(200), nome)
-      .input('mec', sql.Int, matricula)
-      .input('tem', sql.VarChar(10), tem)
-      .input('ind', sql.NVarChar(20), texto(r.getCell(8), 20))
-      .input('bat', sql.Int, numero(r.getCell(9)))
-      .input('obs', sql.NVarChar(sql.MAX), texto(r.getCell(10)))
-      .query(`INSERT INTO dbo.radios_conferencia
-                (origem_id, data_resposta, data_resposta_texto, email, nome, matricula, tem_radio, indicativo_declarado, baterias, obs)
-              VALUES (@origem, @dt, @dtxt, @email, @nome, @mec, @tem, @ind, @bat, @obs)`);
-    resumo.conferencia.lidas++;
+  for (const pessoa of porMatricula.values()) {
+    const indicativos = numerosDoTexto(pessoa.radioBruto);
+    await sincronizarEntregas(pool, pessoa, indicativos, resumo);
   }
 }
 
 // ─── Orquestração ──────────────────────────────────────────
 
 async function principal() {
-  const ficheiro = localizarFicheiro();
-  console.log(`A ler ${ficheiro}`);
-
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(ficheiro);
-
-  const folha = nome => {
-    const ws = wb.getWorksheet(nome);
-    if (!ws) console.warn(`  ⚠ folha "${nome}" não existe neste ficheiro — ignorada`);
-    return ws;
-  };
-
   const pool = await poolPromise;
   if (!pool) throw new Error('Sem ligação à base de dados — ver o .env.');
 
-  if (LIMPAR) {
-    // As atribuições, avarias e abates caem com o rádio (ON DELETE CASCADE).
-    // O registo de importações não se limpa: é o histórico de quem correu isto.
-    await pool.request().query('DELETE FROM dbo.radios');
-    await pool.request().query('DELETE FROM dbo.radios_sistema');
-    await pool.request().query('DELETE FROM dbo.radios_conferencia');
-    console.log('  (parque esvaziado antes de importar — --limpar)');
-  }
-
   const resumo = {
     master: { lidas: 0, criados: 0, actualizados: 0 },
-    parque: { lidas: 0, criados: 0, atribuicoes: 0, vazias: 0 },
-    motorola: { lidas: 0, criados: 0 },
-    sistema: { lidas: 0, ligados_por_serie: 0, ligados_por_indicativo: 0, criados_no_parque: 0 },
-    avariados: { lidas: 0, avarias: 0 },
-    folha1: { lidas: 0 },
-    abates: { lidas: 0, abatidos: 0 },
-    conferencia: { lidas: 0 },
-    notas: [],
+    atribuidos: { lidas: 0, duplicadas: 0, em_conflito: 0, sem_radio: 0, radios_criados: 0, atribuicoes: 0 },
   };
 
-  // ⚠️ A ORDEM IMPORTA, e o `TEI` é o ÚLTIMO de propósito.
-  //
-  // As folhas do parque, dos abates e dos avariados encontram o equipamento pelo
-  // `garantirRadio()`, que sem número de série procura pelo indicativo **entre
-  // os rádios que também não têm série**. O TEI preenche séries (passo 2 da
-  // ligação), portanto se corresse antes tirava esses rádios do alcance dessa
-  // procura: o `garantirRadio` deixava de os encontrar e criava duplicados —
-  // aconteceu, e custou 52 indicativos repetidos, 27 avarias e 14 abates falsos.
-  //
-  // Correndo no fim, o TEI é a última palavra: liga o que existe e cria o que
-  // falta, e já ninguém procura equipamento depois dele.
-  // O master vem antes de tudo: identifica os equipamentos, para que as folhas
-  // seguintes os encontrem em vez de os criarem outra vez.
   process.stdout.write('  master radios.xlsx… ');
   await importarMaster(pool, resumo);
   console.log('ok');
 
-  const ordem = [
-    ['Radios', ws => importarParque(pool, ws, resumo)],
-    ['Motorola', ws => importarMotorola(pool, ws, resumo)],
-    ['Radios - Abate', ws => importarAbates(pool, ws, resumo)],
-    ['Quest', ws => importarConferencia(pool, ws, resumo)],
-  ];
-  for (const [nome, fn] of ordem) {
-    const ws = folha(nome);
-    if (!ws) continue;
-    process.stdout.write(`  ${nome}… `);
-    await fn(ws);
-    console.log('ok');
-  }
+  process.stdout.write('  atribuidos.xlsx… ');
+  await importarAtribuicoes(pool, resumo);
+  console.log('ok');
 
-  const wsAvariados = folha('Radios Avariados');
-  if (wsAvariados) {
-    process.stdout.write('  Radios Avariados + Folha1… ');
-    await importarAvarias(pool, wsAvariados, folha('Folha1'), resumo);
-    console.log('ok');
-  }
-
-  // Por último o TEI — ver a nota na `ordem` acima. Depois daqui já ninguém
-  // procura equipamento pelo indicativo.
-  const wsSistema = folha('TEI');
-  if (wsSistema) {
-    process.stdout.write('  TEI… ');
-    await importarSistema(pool, wsSistema, resumo);
-    console.log('ok');
-  }
-
-  // O estado é coluna (ver migração 001) e quem o escreve são as rotas; numa
-  // importação em massa vale a pena fazê-lo de uma vez só, com a mesma regra.
+  // O estado é coluna e não consulta (ver a migração 001); recalcula-se sempre
+  // no fim, a partir dos factos. Sem fonte de avarias/abates nestas duas
+  // folhas, isto só decide entre atribuído e disponível — mas corre na mesma,
+  // para não ficar desalinhado com avarias/abates que o ecrã já tenha registado.
   await pool.request().query(`
     UPDATE dbo.radios
     SET estado = CASE
@@ -806,23 +355,13 @@ async function principal() {
           ELSE 'disponivel' END,
         atualizado_em = GETDATE()`);
 
-  await pool.request()
-    .input('f', sql.NVarChar(400), ficheiro)
-    .input('r', sql.NVarChar(sql.MAX), JSON.stringify(resumo))
-    .input('por', sql.NVarChar(120), process.env.USERNAME || 'desconhecido')
-    .query('INSERT INTO dbo.radios_importacoes (ficheiro, resumo, executado_por) VALUES (@f, @r, @por)');
-
-  const contagens = await pool.request().query(`
-    SELECT estado, COUNT(*) AS total FROM dbo.radios GROUP BY estado ORDER BY estado`);
+  const contagens = await pool.request().query(
+    'SELECT estado, COUNT(*) AS total FROM dbo.radios GROUP BY estado ORDER BY estado');
 
   console.log('\nResumo da importação:');
   console.log(JSON.stringify(resumo, null, 2));
   console.log('\nParque por estado:');
   for (const l of contagens.recordset) console.log(`  ${l.estado.padEnd(12)} ${l.total}`);
-  if (resumo.notas.length) {
-    console.log('\nNotas da folha que NÃO são equipamentos (ficam por registar):');
-    for (const n of resumo.notas) console.log(`  · ${n}`);
-  }
 }
 
 principal()

@@ -10,7 +10,9 @@ o prefixo: pertencem ao tipo, não à aplicação.
 
 Dois tipos de activo, uma página para cada:
 
-- **Rádios** — 407 aparelhos TETRA. Substitui o `Radios apanhado.xlsx` (OneDrive, 7 folhas).
+- **Rádios** — parque TETRA. Fonte actual: `master radios.xlsx` (identificação) +
+  `atribuidos.xlsx` (quem tem o quê). Substituem o `Radios apanhado.xlsx` original (7 folhas) e
+  as fontes TETRA que vieram depois — ficaram só no histórico do git.
 - **Telemóveis** — 300 aparelhos. Substitui o `Livro 1.xlsx` (`C:\Apps\telemoveis`, uma folha).
 
 > Este repositório é **um módulo destacado**, não um projecto autónomo — mesmo molde do
@@ -90,28 +92,28 @@ sqlcmd -S localhost -E -d TelemoveisDev -I -f 65001 -i migrations\002_telemoveis
 ### Carregar os dados do Excel
 
 ```bash
-npm run importar
+npm run importar-radios
 ```
 
 ```bash
 npm run importar-telemoveis
 ```
 
-O primeiro procura o `Radios apanhado.xlsx` no OneDrive da CML; o segundo lê o
-`C:\Apps\telemoveis\Livro 1.xlsx`. Ambos aceitam um caminho e a bandeira `--limpar`, que
-esvazia antes de importar (só para desenvolvimento: apaga o que foi registado pelo ecrã):
+O primeiro lê `C:\Apps\master radios.xlsx` (identificação) e `C:\Apps\atribuidos.xlsx` (quem
+tem cada rádio); os caminhos estão fixos no topo do script, não são parâmetro. O segundo lê
+`C:\Apps\telemoveis\Livro 1.xlsx`.
 
-```bash
-npm run importar-radios -- "C:\caminho\Radios apanhado.xlsx"
-```
+Correm as vezes que forem precisas. Ao contrário do importador dos telemóveis, o dos rádios
+**não tem `--limpar`**: sincroniza em vez de destruir — uma segunda corrida fecha entregas que
+já não batem e abre as que faltam, nunca apaga em bloco. O rádio é encontrado pelo alias (a
+chave do master) e a entrega por (rádio, matrícula); não duplica.
 
-Podem correr as vezes que forem precisas — os rádios são procurados por número de série e, na
-falta dele, por indicativo; os telemóveis pelo número do cartão e, na falta dele, pelo IMEI.
-
-Os dois imprimem um resumo no fim. O dos rádios lista ainda as **notas** — as linhas do
-ficheiro que contam rádios sem os listar ("Existem mais 7 rádios Secura 2120 sem número"): são
-39 rádios que ninguém registou individualmente. O dos telemóveis conta as **linhas repetidas**
-na folha (há uma).
+Como o `atribuidos.xlsx` não tem datas, todas as entregas desta importação levam a mesma data
+fixa no código (`DATA_ATRIBUICAO_PADRAO`) — é quando o levantamento foi feito, não quando a
+entrega aconteceu de facto. O resumo no fim conta as pessoas repetidas no ficheiro (fica a
+última linha), as que reclamam um rádio que outra pessoa também reclama (ficam de fora, dos
+dois lados, até se resolver na origem) e os números sem correspondência no master (entram como
+ficha mínima). Ver `scripts/importar_radios.js` e o CLAUDE.md para o detalhe de cada regra.
 
 ## Correr
 
@@ -145,23 +147,28 @@ montado pelo `server/index.js`.
 
 ## O que o módulo faz
 
-**Parque** — 407 rádios com indicativo, número de série, marca/modelo, alias TETRA e estado
-(entregue · disponível · avariado · abatido). Procura, filtros e exportação para CSV.
+**Parque** — a tabela mostra só a coluna Acções, a pedido (2026-09-04): sem colunas de dados
+até se decidir o que faz sentido mostrar. O detalhe completo (indicativo, série, marca/modelo,
+alias TETRA, entregas, estado) está na ficha, atrás do botão de ver — é lá que o rádio se vê a
+sério, a tabela é só a lista. Procura, filtros e exportação para CSV continuam a funcionar por
+baixo, mesmo sem colunas visíveis a mostrar o que filtram.
 
 **Entregas** — uma linha por entrega, com data, guia e observações. Entregar a outra pessoa
-fecha a entrega anterior em vez de a apagar, que é o que o ficheiro fazia.
+fecha a entrega anterior em vez de a apagar. Uma pessoa pode ter mais do que uma entrega aberta
+ao mesmo tempo — acontece quando o `atribuidos.xlsx` descreve dois rádios na mesma célula.
 
 **Avarias** — tipo, se é de programação (`P`) ou física (`*`), onde está o equipamento, e o
-fecho (reparada ou irreparável).
+fecho (reparada ou irreparável). Sem fonte de dados nas duas folhas actuais: fica vazio até
+haver ficheiro próprio, ou até se registar pelo ecrã.
 
 **Abates** — o rádio sai do parque activo mas não é apagado; o histórico fica. Só administração.
+Mesma situação das avarias: sem fonte nas folhas actuais.
 
-**Conferência** — cruza as 405 respostas ao questionário com o registo e classifica cada
-pessoa: confere · indicativo diferente · sem registo · não declarado · sem resposta. É aqui
-que aparece o trabalho por fazer.
-
-**Sistema TETRA** — as 715 linhas da exportação da consola, só de leitura. Cruzam-se com o
-parque pelo número de série.
+**Conferência e Sistema TETRA** — as rotas e a lógica continuam no código
+(`/api/iga/radios/conferencia`, `/sistema`), mas os separadores saíram do ecrã (2026-09-04,
+junto com a limpeza da base) e nenhuma das duas folhas de que dependiam continua a ser
+importada. Sem uso actual; não removidos por não haver ainda a certeza de que o novo par de
+ficheiros não vai precisar de algo parecido.
 
 **Telemóveis** — 300 aparelhos com número, IMEI, serviço e estado, com as mesmas entregas,
 avarias e abates dos rádios. As **credenciais do cartão e da conta** (PIN, PUK, utilizador e

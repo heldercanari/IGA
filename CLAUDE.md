@@ -70,25 +70,49 @@ novo entra com o seu nome, não com `iga_qualquer_coisa`.
 - **Ao contrário da correspondência, aqui as datas são `DATE` a sério.** A origem trazia datas
   do Excel, não texto; a excepção é a folha `Quest`, cujas datas vêm em texto "17-Oct-25" e são
   convertidas na importação, com o cru guardado ao lado em `data_resposta_texto`.
-- **`num_serie` é único mas só quando existe** (índice filtrado): 132 dos 407 rádios não têm
-  número de série e isso é de origem, não é sujidade para limpar.
-- ⚠️ **`indicativo` NÃO é único e há repetidos de verdade** (357, 847, 849, 855, 875, 885). São
-  reatribuições que nunca foram fechadas. Não os juntes: cada linha é equipamento diferente.
+- **`num_serie` é único mas só quando existe** (índice filtrado): os dois rádios criados sem
+  ficha do master (ver abaixo) não têm série, e isso é esperado, não sujidade para limpar.
+- **`indicativo` é efectivamente único agora.** As reatribuições nunca fechadas que existiam na
+  folha antiga (357, 847, 849…) eram um artefacto dela — não existem no `master radios.xlsx`,
+  cujo ALIAS é uma chave a sério. Se voltares a ver indicativos duplicados, é sinal de que algo
+  está a criar rádios em vez de encontrar os que já existem — ver `importarMaster()`.
 
-## O ficheiro de origem, e o que ele prega
+## As duas fontes actuais, e o que elas pregam
 
-O `Radios apanhado.xlsx` tem 7 folhas e três armadilhas que já custaram uma importação:
+`master radios.xlsx` (ALIAS, S/N, TEI, ISSI, Marca, Modelo — 765 linhas) diz QUE equipamento
+existe; `atribuidos.xlsx` (email, utilizador, matrícula, Nº rádio — ~197 linhas) diz QUEM tem
+cada um agora. Substituem por completo o `Radios apanhado.xlsx` de 7 folhas e as fontes TETRA
+que vieram depois (`TEI radios.xlsx`, a folha `TEI` antiga) — essas ficaram só no histórico do
+git. `scripts/importar_radios.js` não lê mais nenhuma delas.
 
-- ⚠️ **As linhas de nota estão em células unidas**, e o `exceljs` devolve o texto da união em
-  TODAS as células dela. "Existem mais 7 rádios Secura 2120 sem número" entrava como um rádio
-  cujo indicativo, marca, modelo e utilizador eram essa frase. É o que `identidade()` em
-  `scripts/importar_radios.js` filtra — e as frases vão para `resumo.notas`, que é impresso no
-  fim: são 39 rádios reais que o ficheiro conta mas não lista.
-- **Três linhas têm uma linha da exportação TEI colada a partir da coluna K.** Só se lêem as
-  colunas A..J. Uma delas trouxe também o alias para a coluna do indicativo — daí o
-  `indicativoDoAlias()`.
-- **`TEI` e `Quest` são fotografias de outros sistemas**, por isso a importação substitui-as por
-  inteiro. As outras folhas são acrescentadas sem duplicar.
+- ⚠️ **O `atribuidos.xlsx` não tem datas.** As entregas desta importação levam todas
+  `DATA_ATRIBUICAO_PADRAO` (2025-10-01, fixa no código) — é quando o levantamento foi feito, não
+  quando a entrega aconteceu de facto. Isso perdeu-se; não se inventa.
+- ⚠️ **Há pessoas repetidas no ficheiro, com rádios diferentes.** A regra é a última linha vale
+  (decisão do utilizador) — `importarAtribuicoes()` agrupa por matrícula num `Map`, que guarda só
+  a última escrita.
+- ⚠️ **Dois rádios têm DUAS pessoas diferentes a reclamá-los** (não é a mesma pessoa duas vezes —
+  são pessoas distintas). Isso o importador não decide sozinho: `RADIOS_EM_CONFLITO` marca-os, e
+  as linhas dos dois lados ficam de fora, visíveis em `resumo.atribuidos.em_conflito`. Resolve-se
+  pelo ecrã (entregar a quem for) quando se souber quem tem o rádio a sério.
+- ⚠️ **Um valor "34" que devia ser "834" criou um SEGUNDO conflito** quando corrigido — o 834
+  já tinha dono legítimo no mesmo ficheiro. Por isso a correcção de um valor mal transcrito não
+  se limita a "trocar o número": pode chocar com outra linha. Ver `MATRICULAS_EM_CONFLITO`, que
+  trata este caso pontual como os outros conflitos — de fora, à vista, por resolver na origem.
+- **Um valor pode descrever MAIS do que um rádio** — "643 (comando) / 349 (Paços do Concelho)",
+  a mesma pessoa com dois rádios consoante o local. `numerosDoTexto()` extrai todos os números
+  de uma célula; é o único sítio onde uma pessoa fica com mais de uma entrega aberta ao mesmo
+  tempo, e é deliberado.
+- **Números que não existem no master criam ficha mínima** (só o indicativo, sem série/alias) —
+  `radioDoIndicativo()`, com a proveniência marcada em `obs`. Se o master vier a ganhar uma linha
+  para esse mesmo indicativo mais tarde, `importarMaster()` completa a ficha em vez de duplicar
+  (o terceiro passo da procura, por indicativo único).
+- **Não há avarias nem abates nestas duas fontes.** O importador não toca em
+  `radios_avarias`/`radios_abates` — ficam como o ecrã os deixar, até haver ficheiro próprio.
+- **Sem `--limpar`.** Ao contrário do importador antigo, este sincroniza em vez de destruir: uma
+  segunda corrida fecha o que já não bate e abre o que é novo, nunca apaga em bloco. Foi o que
+  faltou da primeira vez que se tentou uma fonte nova — custou duplicados e, uma vez, dados reais
+  perdidos (ver o histórico do git à volta de "o rádio 666").
 
 ## O ficheiro dos telemóveis, e o que ele prega
 
