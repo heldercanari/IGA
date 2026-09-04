@@ -149,6 +149,11 @@
                     <table class="w-full text-sm">
                         <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
                             <tr>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Alias</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Rádio</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">N. Série</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Atribuído</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Data</th>
                                 <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
                             </tr>
                         </thead>
@@ -295,17 +300,22 @@ function desenharParque() {
   const corpo = document.getElementById('tabelaParque');
 
   if (!estado.radios.length) {
-    corpo.innerHTML = `<tr><td colspan="1" class="px-4 py-10 text-center text-slate-400 text-sm">
+    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">
       Nenhum rádio encontrado com estes filtros.</td></tr>`;
     document.getElementById('rodapeParque').textContent = '';
     return;
   }
 
-  // A pedido, a tabela fica só com a coluna de Acções — sem colunas de dados —
-  // enquanto se aguarda o ficheiro que vai definir a estrutura nova. O detalhe
-  // (ver, no botão do olho) continua completo, com tudo o que o rádio tem.
   corpo.innerHTML = estado.radios.map(r => {
+    const atribuido = r.matricula || r.nome_utilizador
+      ? `${esc(r.nome_utilizador || '—')}${r.matricula ? ` <span class="text-slate-400">· ${esc(r.matricula)}</span>` : ''}`
+      : '<span class="text-slate-300">—</span>';
     return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 text-slate-700">${r.alias_tei ? esc(r.alias_tei) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2 font-bold text-slate-900">${esc(r.indicativo || '—')}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${r.num_serie ? esc(r.num_serie) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2">${atribuido}</td>
+      <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${r.data_entrega ? dataPt(r.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
         <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${r.id}" title="Ver detalhe" aria-label="Ver detalhe do rádio ${esc(r.indicativo || r.num_serie || '')}">
           <i data-lucide="eye" class="w-4 h-4"></i></button>
