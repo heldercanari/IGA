@@ -11,8 +11,9 @@ o prefixo: pertencem ao tipo, não à aplicação.
 Dois tipos de activo, uma página para cada:
 
 - **Rádios** — parque TETRA. Fonte actual: `master radios.xlsx` (identificação) +
-  `atribuidos.xlsx` (quem tem o quê). Substituem o `Radios apanhado.xlsx` original (7 folhas) e
-  as fontes TETRA que vieram depois — ficaram só no histórico do git.
+  `atribuidos.xlsx` (quem tem o quê) + `avarias.csv`, no próprio repositório (o que está
+  avariado). Substituem o `Radios apanhado.xlsx` original (7 folhas) e as fontes TETRA que
+  vieram depois — ficaram só no histórico do git.
 - **Telemóveis** — 300 aparelhos. Substitui o `Livro 1.xlsx` (`C:\Apps\telemoveis`, uma folha).
 
 > Este repositório é **um módulo destacado**, não um projecto autónomo — mesmo molde do
@@ -89,7 +90,7 @@ sqlcmd -S localhost -E -d TelemoveisDev -I -Q "CREATE USER radios_dev FOR LOGIN 
 sqlcmd -S localhost -E -d TelemoveisDev -I -f 65001 -i migrations\002_telemoveis.sql
 ```
 
-### Carregar os dados do Excel
+### Carregar os dados
 
 ```bash
 npm run importar-radios
@@ -99,21 +100,25 @@ npm run importar-radios
 npm run importar-telemoveis
 ```
 
-O primeiro lê `C:\Apps\master radios.xlsx` (identificação) e `C:\Apps\atribuidos.xlsx` (quem
-tem cada rádio); os caminhos estão fixos no topo do script, não são parâmetro. O segundo lê
+O primeiro lê `C:\Apps\master radios.xlsx` (identificação), `C:\Apps\atribuidos.xlsx` (quem tem
+cada rádio) e `avarias.csv` — este último dentro do próprio repositório, não em `C:\Apps\`,
+porque é o único das três pensado para se editar directamente e ficar no histórico do git. Os
+caminhos das duas primeiras estão fixos no topo do script, não são parâmetro. O segundo lê
 `C:\Apps\telemoveis\Livro 1.xlsx`.
 
 Correm as vezes que forem precisas. Ao contrário do importador dos telemóveis, o dos rádios
-**não tem `--limpar`**: sincroniza em vez de destruir — uma segunda corrida fecha entregas que
-já não batem e abre as que faltam, nunca apaga em bloco. O rádio é encontrado pelo alias (a
-chave do master) e a entrega por (rádio, matrícula); não duplica.
+**não tem `--limpar`**: sincroniza em vez de destruir — uma segunda corrida fecha o que já não
+bate e abre o que falta, nunca apaga em bloco. Vale para as três fontes: o rádio é encontrado
+pelo alias (a chave do master) ou pelo indicativo, a entrega por (rádio, matrícula) e a avaria
+por (rádio, ainda aberta, aberta por este importador) — nada duplica.
 
 Como o `atribuidos.xlsx` não tem datas, todas as entregas desta importação levam a mesma data
 fixa no código (`DATA_ATRIBUICAO_PADRAO`) — é quando o levantamento foi feito, não quando a
-entrega aconteceu de facto. O resumo no fim conta as pessoas repetidas no ficheiro (fica a
-última linha), as que reclamam um rádio que outra pessoa também reclama (ficam de fora, dos
-dois lados, até se resolver na origem) e os números sem correspondência no master (entram como
-ficha mínima). Ver `scripts/importar_radios.js` e o CLAUDE.md para o detalhe de cada regra.
+entrega aconteceu de facto. O resumo no fim conta, por fonte, o que mudou: pessoas repetidas no
+ficheiro (fica a última linha), as que reclamam um rádio que outra pessoa também reclama (ficam
+de fora, dos dois lados, até se resolver na origem), números sem correspondência no master
+(entram como ficha mínima) e avarias abertas, actualizadas ou dadas como reparadas desde a
+corrida anterior. Ver `scripts/importar_radios.js` e o CLAUDE.md para o detalhe de cada regra.
 
 ## Correr
 
@@ -147,19 +152,20 @@ montado pelo `server/index.js`.
 
 ## O que o módulo faz
 
-**Parque** — a tabela mostra só a coluna Acções, a pedido (2026-09-04): sem colunas de dados
-até se decidir o que faz sentido mostrar. O detalhe completo (indicativo, série, marca/modelo,
-alias TETRA, entregas, estado) está na ficha, atrás do botão de ver — é lá que o rádio se vê a
-sério, a tabela é só a lista. Procura, filtros e exportação para CSV continuam a funcionar por
-baixo, mesmo sem colunas visíveis a mostrar o que filtram.
+**Parque** — Alias, Rádio, N. Série, Estado, Atribuído, Data e Acções. O detalhe completo (TEI,
+ISSI, marca/modelo, histórico de entregas e avarias) está na ficha, atrás do botão de ver — é lá
+que o rádio se vê a sério, a tabela é só a lista. Procura, filtros e exportação para CSV
+continuam a funcionar sobre as mesmas colunas.
 
 **Entregas** — uma linha por entrega, com data, guia e observações. Entregar a outra pessoa
 fecha a entrega anterior em vez de a apagar. Uma pessoa pode ter mais do que uma entrega aberta
 ao mesmo tempo — acontece quando o `atribuidos.xlsx` descreve dois rádios na mesma célula.
 
 **Avarias** — tipo, se é de programação (`P`) ou física (`*`), onde está o equipamento, e o
-fecho (reparada ou irreparável). Sem fonte de dados nas duas folhas actuais: fica vazio até
-haver ficheiro próprio, ou até se registar pelo ecrã.
+fecho (reparada ou irreparável). Fonte: `avarias.csv`, no próprio repositório — ver *As três
+fontes actuais* no CLAUDE.md para o formato e a sincronização. Continua a poder registar-se
+pelo ecrã (avaria pontual, fora do ficheiro); o importador só mexe nas que ele próprio abriu,
+nunca nas registadas à mão.
 
 **Abates** — o rádio sai do parque activo mas não é apagado; o histórico fica. Só administração.
 Mesma situação das avarias: sem fonte nas folhas actuais.

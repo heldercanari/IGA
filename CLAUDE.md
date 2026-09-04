@@ -77,13 +77,14 @@ novo entra com o seu nome, não com `iga_qualquer_coisa`.
   cujo ALIAS é uma chave a sério. Se voltares a ver indicativos duplicados, é sinal de que algo
   está a criar rádios em vez de encontrar os que já existem — ver `importarMaster()`.
 
-## As duas fontes actuais, e o que elas pregam
+## As três fontes actuais, e o que elas pregam
 
 `master radios.xlsx` (ALIAS, S/N, TEI, ISSI, Marca, Modelo — 765 linhas) diz QUE equipamento
 existe; `atribuidos.xlsx` (email, utilizador, matrícula, Nº rádio — ~197 linhas) diz QUEM tem
-cada um agora. Substituem por completo o `Radios apanhado.xlsx` de 7 folhas e as fontes TETRA
-que vieram depois (`TEI radios.xlsx`, a folha `TEI` antiga) — essas ficaram só no histórico do
-git. `scripts/importar_radios.js` não lê mais nenhuma delas.
+cada um agora; `avarias.csv`, dentro do próprio repositório, diz QUE está avariado. Substituem
+por completo o `Radios apanhado.xlsx` de 7 folhas e as fontes TETRA que vieram depois (`TEI
+radios.xlsx`, a folha `TEI` antiga) — essas ficaram só no histórico do git.
+`scripts/importar_radios.js` não lê mais nenhuma delas.
 
 - ⚠️ **O `atribuidos.xlsx` não tem datas.** As entregas desta importação levam todas
   `DATA_ATRIBUICAO_PADRAO` (2025-10-01, fixa no código) — é quando o levantamento foi feito, não
@@ -107,8 +108,22 @@ git. `scripts/importar_radios.js` não lê mais nenhuma delas.
   `radioDoIndicativo()`, com a proveniência marcada em `obs`. Se o master vier a ganhar uma linha
   para esse mesmo indicativo mais tarde, `importarMaster()` completa a ficha em vez de duplicar
   (o terceiro passo da procura, por indicativo único).
-- **Não há avarias nem abates nestas duas fontes.** O importador não toca em
-  `radios_avarias`/`radios_abates` — ficam como o ecrã os deixar, até haver ficheiro próprio.
+- **`avarias.csv` vive dentro do repositório, não em `C:\Apps\`, e é de propósito.** É a única
+  das três fontes escrita à mão em vez de exportada de outro sítio — fica no git para se poder
+  editar directamente, linha a linha, à medida que os rádios saem e voltam da reparação, com
+  histórico de quem mudou o quê. Colunas `Obs;Avaria;Rádio`, `;`-separado, com BOM UTF-8 — o
+  mesmo formato que o próprio ecrã exporta. `Avaria` a conter "prog" (case-insensitive) marca
+  `ordem = 'P'`; o resto é `'*'`. `Obs` vira `localizacao`.
+- **`importarAvariasCSV()` sincroniza como o `atribuidos.xlsx`, não substitui.** Só mexe em
+  avarias com `registado_por = 'importação'` — nunca nas abertas pelo ecrã à mão (ver `radios
+  553`, avaria de utilizador, intocada por todas as corridas). A cada execução: indicativos que
+  saíram do ficheiro fecham (`estado = 'reparada'`, `data_reparacao = GETDATE()`); os que
+  ficaram mas mudaram de texto actualizam; os novos abrem — usando o mesmo `radioDoIndicativo()`
+  do `atribuidos.xlsx`, incluindo a ficha mínima para indicativos sem linha no master. Remover
+  uma linha do CSV é a forma de dizer "reparado"; a seguir ao `UPDATE` de `recalcularEstado()`
+  no fim do import, o rádio volta a `disponivel` ou `atribuido`, consoante o caso.
+- **Não há abates nestas três fontes.** O importador não toca em `radios_abates` — fica como o
+  ecrã o deixar, até haver ficheiro próprio ou processo manual definido.
 - **Sem `--limpar`.** Ao contrário do importador antigo, este sincroniza em vez de destruir: uma
   segunda corrida fecha o que já não bate e abre o que é novo, nunca apaga em bloco. Foi o que
   faltou da primeira vez que se tentou uma fonte nova — custou duplicados e, uma vez, dados reais
