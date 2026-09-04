@@ -152,6 +152,7 @@
                                 <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Alias</th>
                                 <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Rádio</th>
                                 <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">N. Série</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Estado</th>
                                 <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Atribuído</th>
                                 <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Data</th>
                                 <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
@@ -300,7 +301,7 @@ function desenharParque() {
   const corpo = document.getElementById('tabelaParque');
 
   if (!estado.radios.length) {
-    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">
+    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">
       Nenhum rádio encontrado com estes filtros.</td></tr>`;
     document.getElementById('rodapeParque').textContent = '';
     return;
@@ -314,6 +315,7 @@ function desenharParque() {
       <td class="px-3 py-2 text-slate-700">${r.alias_tei ? esc(r.alias_tei) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 font-bold text-slate-900">${esc(r.indicativo || '—')}</td>
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${r.num_serie ? esc(r.num_serie) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2">${etiqueta(ESTADOS, r.estado)}</td>
       <td class="px-3 py-2">${atribuido}</td>
       <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${r.data_entrega ? dataPt(r.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
