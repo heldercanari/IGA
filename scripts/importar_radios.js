@@ -192,11 +192,25 @@ async function garantirRadio(pool, { num_serie, indicativo, marca, modelo, alias
     }
   }
   if (indicativo) {
-    // Sem série, o indicativo identifica — mas só quando o registo existente
-    // também não tem série. Casar com um que já tem série colava dois
-    // equipamentos diferentes que por acaso partilham o número.
+    // Sem série na folha, o indicativo é o que identifica. Prefere-se o registo
+    // que também não tem série; se não houver, aceita-se um que tenha — mas só
+    // quando é o ÚNICO com aquele indicativo.
+    //
+    // ⚠️ A segunda metade desta regra é o que torna a importação repetível. A
+    // versão anterior exigia `num_serie IS NULL` sempre, o que fazia sentido
+    // enquanto ninguém preenchia séries. Depois de o passo do TETRA passar a
+    // preenchê-las, correr o importador segunda vez deixava de encontrar esses
+    // rádios e criava um duplicado de cada um — 123 rádios, 27 avarias e 14
+    // abates a mais numa única corrida repetida. Aceitar o único candidato com
+    // série fecha esse buraco sem reabrir o antigo: com dois ou mais rádios a
+    // partilhar o indicativo (as reatribuições nunca fechadas) continua a não se
+    // adivinhar, e cria-se registo novo.
     const r = await pool.request().input('i', sql.NVarChar(20), indicativo)
-      .query('SELECT TOP 1 id FROM dbo.radios WHERE indicativo = @i AND num_serie IS NULL ORDER BY id');
+      .query(`SELECT TOP 1 id FROM dbo.radios
+              WHERE indicativo = @i
+                AND (num_serie IS NULL
+                     OR (SELECT COUNT(*) FROM dbo.radios o WHERE o.indicativo = @i) = 1)
+              ORDER BY CASE WHEN num_serie IS NULL THEN 0 ELSE 1 END, id`);
     if (r.recordset.length) {
       await completarRadio(pool, r.recordset[0].id, { num_serie, marca, modelo, alias_tei, radio_id_tei, tie, obs });
       return { id: r.recordset[0].id, criado: false };
@@ -320,25 +334,69 @@ async function importarMotorola(pool, ws, resumo) {
  * Folha `TEI` — a exportação da consola do sistema TETRA.
  * Substituída por inteiro: é uma fotografia, não um diário.
  */
+/** O ficheiro com a exportação corrente da consola TETRA, ao lado do código. */
+const TEI_CORRENTE = path.join(__dirname, '..', 'TEI radios.xlsx');
+
+/**
+ * De onde vem o registo do sistema: o `TEI radios.xlsx` se existir, senão a
+ * folha `TEI` do ficheiro do parque. Devolve { ws, origem } ou null.
+ */
+async function folhaDoSistema(wbParque, folha) {
+  if (fs.existsSync(TEI_CORRENTE)) {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(TEI_CORRENTE);
+    const ws = wb.worksheets[0];
+    if (ws) return { ws, origem: 'TEI radios.xlsx' };
+  }
+  const ws = folha('TEI');
+  return ws ? { ws, origem: 'folha TEI do ficheiro do parque' } : null;
+}
+
+/**
+ * O registo do sistema TETRA.
+ *
+ * A exportação vem em duas formas, e as duas são aceites:
+ *  - o `TEI radios.xlsx` (4 colunas: alias, grupo de segurança, série, ID) — é a
+ *    lista corrente, e é a que manda sobre QUEM está programado;
+ *  - a folha `TEI` do `Radios apanhado.xlsx` (48 colunas), que traz ainda o
+ *    grupo de conversação, o perfil e as capacidades do aparelho.
+ *
+ * ⚠️ Por isso a tabela NÃO é apagada e reescrita às cegas: o ficheiro de 4
+ * colunas não sabe o grupo de conversação nem o perfil, e reescrever com ele
+ * esvaziava duas colunas que o ecrã mostra. O que a lista nova não diz, mas já
+ * se sabia do mesmo equipamento (pela série), é reaproveitado. O que sai da
+ * lista desaparece na mesma — continua a ser uma fotografia, não um acumular.
+ */
 async function importarSistema(pool, ws, resumo) {
+  const anterior = new Map();
+  const antes = await pool.request().query(`
+    SELECT num_serie, talkgroup, perfil_capacidades, interconnect,
+           full_duplex, escuta_ambiente, acesso_pstn
+    FROM dbo.radios_sistema WHERE num_serie IS NOT NULL`);
+  for (const l of antes.recordset) anterior.set(l.num_serie, l);
+
+  // A folha larga traz estas colunas; a estreita não tem sequer essas posições.
+  const largo = ws.columnCount >= 30;
+
   await pool.request().query('DELETE FROM dbo.radios_sistema');
   for (let i = 2; i <= ws.rowCount; i++) {
     const r = ws.getRow(i);
     const alias = texto(r.getCell(1), 60);
     const num_serie = texto(r.getCell(3), 60);
     if (!alias && !num_serie) continue;
+    const guardado = anterior.get(num_serie) || {};
     await pool.request()
       .input('alias', sql.NVarChar(60), alias)
       .input('indicativo', sql.NVarChar(20), indicativoDoAlias(alias))
       .input('grupo', sql.NVarChar(60), texto(r.getCell(2), 60))
       .input('serie', sql.NVarChar(60), num_serie)
       .input('rid', sql.Int, numero(r.getCell(4)))
-      .input('talkgroup', sql.NVarChar(60), texto(r.getCell(25), 60))
-      .input('perfil', sql.NVarChar(60), texto(r.getCell(13), 60))
-      .input('interconnect', sql.NVarChar(40), texto(r.getCell(15), 40))
-      .input('duplex', sql.VarChar(5), texto(r.getCell(11), 5))
-      .input('escuta', sql.VarChar(5), texto(r.getCell(26), 5))
-      .input('pstn', sql.VarChar(5), texto(r.getCell(30), 5))
+      .input('talkgroup', sql.NVarChar(60), (largo ? texto(r.getCell(25), 60) : null) || guardado.talkgroup || null)
+      .input('perfil', sql.NVarChar(60), (largo ? texto(r.getCell(13), 60) : null) || guardado.perfil_capacidades || null)
+      .input('interconnect', sql.NVarChar(40), (largo ? texto(r.getCell(15), 40) : null) || guardado.interconnect || null)
+      .input('duplex', sql.VarChar(5), (largo ? texto(r.getCell(11), 5) : null) || guardado.full_duplex || null)
+      .input('escuta', sql.VarChar(5), (largo ? texto(r.getCell(26), 5) : null) || guardado.escuta_ambiente || null)
+      .input('pstn', sql.VarChar(5), (largo ? texto(r.getCell(30), 5) : null) || guardado.acesso_pstn || null)
       .query(`INSERT INTO dbo.radios_sistema
                 (alias, indicativo, security_group, num_serie, radio_id, talkgroup,
                  perfil_capacidades, interconnect, full_duplex, escuta_ambiente, acesso_pstn)
@@ -599,10 +657,14 @@ async function principal() {
 
   // Por último o TEI — ver a nota na `ordem` acima. Depois daqui já ninguém
   // procura equipamento pelo indicativo.
-  const wsSistema = folha('TEI');
+  //
+  // A lista corrente é o `TEI radios.xlsx`, ao lado do código: é o ficheiro que
+  // se substitui quando a consola exporta de novo. Só na falta dele se usa a
+  // folha `TEI` do ficheiro do parque, que é a exportação antiga e mais larga.
+  const wsSistema = await folhaDoSistema(wb, folha);
   if (wsSistema) {
-    process.stdout.write('  TEI… ');
-    await importarSistema(pool, wsSistema, resumo);
+    process.stdout.write(`  Sistema TETRA (${wsSistema.origem})… `);
+    await importarSistema(pool, wsSistema.ws, resumo);
     console.log('ok');
   }
 
