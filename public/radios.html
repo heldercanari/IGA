@@ -158,12 +158,11 @@
                     <table class="w-full text-sm">
                         <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
                             <tr>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Alias</th>
                                 <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Indicativo</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nº de série</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Equipamento</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Marca</th>
                                 <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Estado</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Quem o tem</th>
-                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Entregue</th>
+                                <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Atribuído</th>
                                 <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
                             </tr>
                         </thead>
@@ -385,7 +384,7 @@ function desenharParque() {
   const corpo = document.getElementById('tabelaParque');
 
   if (!estado.radios.length) {
-    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">
+    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">
       Nenhum rádio encontrado com estes filtros.</td></tr>`;
     document.getElementById('rodapeParque').textContent = '';
     return;
@@ -395,19 +394,17 @@ function desenharParque() {
     const entregue = r.matricula || r.nome_utilizador
       ? `${esc(r.nome_utilizador || '—')}${r.matricula ? ` <span class="text-slate-400">· ${esc(r.matricula)}</span>` : ''}`
       : '<span class="text-slate-300">—</span>';
-    // O tipo de avaria NÃO vem para a tabela: o estado já diz que está avariado,
-    // e o motivo está na ficha. Igual à página dos telemóveis, onde eram frases
-    // inteiras da folha de origem a desalinhar as linhas.
+    // A tabela mostra só o que identifica o rádio e a quem está: alias,
+    // indicativo, marca, estado e utilizador. O número de série, o modelo, o ID
+    // de rádio, o grupo de conversação e o perfil estão na ficha — são o detalhe
+    // de UM equipamento, não critério para percorrer 400 linhas. Pelo mesmo
+    // motivo não vem aqui o tipo de avaria nem a data de entrega.
     return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 text-slate-700">${r.alias_tei ? esc(r.alias_tei) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 font-bold text-slate-900">${esc(r.indicativo || '—')}</td>
-      <td class="px-3 py-2 font-mono text-xs text-slate-600">${r.num_serie ? esc(r.num_serie) : '<span class="text-slate-300">sem série</span>'}</td>
-      <td class="px-3 py-2">
-        <div class="text-slate-800">${esc(r.marca || '—')} <span class="text-slate-500">${esc(r.modelo || '')}</span></div>
-        ${r.alias_tei ? `<div class="text-[11px] text-slate-400">${esc(r.alias_tei)}</div>` : ''}
-      </td>
+      <td class="px-3 py-2 text-slate-800">${esc(r.marca || '—')}</td>
       <td class="px-3 py-2">${etiqueta(ESTADOS, r.estado)}</td>
       <td class="px-3 py-2">${entregue}</td>
-      <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${r.data_entrega ? dataPt(r.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
         <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${r.id}" title="Ver detalhe" aria-label="Ver detalhe do rádio ${esc(r.indicativo || r.num_serie || '')}">
           <i data-lucide="eye" class="w-4 h-4"></i></button>
