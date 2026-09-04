@@ -347,15 +347,62 @@ async function importarSistema(pool, ws, resumo) {
     resumo.sistema.lidas++;
   }
 
-  // Devolver ao parque o que o sistema sabe: alias e ID de rádio, pela série.
-  const lig = await pool.request().query(`
+  // ── O sistema entra todo no parque ─────────────────────
+  // O alias é a coluna principal do parque, portanto nenhum equipamento
+  // programado no TETRA pode ficar de fora. São três passos, e a ordem importa:
+  // ligar pela série, ligar pelo indicativo, e só depois criar o que sobrar —
+  // ao contrário, criavam-se duplicados de rádios que já lá estavam.
+
+  // 1. Pela série, que é a chave forte: identifica o aparelho sem ambiguidade.
+  const porSerie = await pool.request().query(`
     UPDATE r SET r.alias_tei = ISNULL(r.alias_tei, s.alias),
                  r.radio_id_tei = ISNULL(r.radio_id_tei, s.radio_id),
                  r.atualizado_em = GETDATE()
     FROM dbo.radios r
     INNER JOIN dbo.radios_sistema s ON s.num_serie = r.num_serie
     WHERE r.num_serie IS NOT NULL AND (r.alias_tei IS NULL OR r.radio_id_tei IS NULL)`);
-  resumo.sistema.ligados_por_serie = lig.rowsAffected[0];
+  resumo.sistema.ligados_por_serie = porSerie.rowsAffected[0];
+
+  // 2. Pelo indicativo, para os 132 rádios que não têm série e por isso o passo
+  //    anterior não apanha. Só quando o indicativo é ÚNICO dos dois lados: no
+  //    parque há indicativos repetidos (reatribuições nunca fechadas) e ligar um
+  //    alias a dois rádios diferentes era inventar. A série do sistema também
+  //    desce, mas só se mais nenhum rádio a tiver — senão viola o índice único.
+  const porIndicativo = await pool.request().query(`
+    WITH sis AS (
+      SELECT indicativo, MIN(alias) AS alias, MIN(radio_id) AS radio_id, MIN(num_serie) AS num_serie
+      FROM dbo.radios_sistema WHERE indicativo IS NOT NULL
+      GROUP BY indicativo HAVING COUNT(*) = 1
+    ),
+    par AS (
+      SELECT indicativo FROM dbo.radios WHERE indicativo IS NOT NULL
+      GROUP BY indicativo HAVING COUNT(*) = 1
+    )
+    UPDATE r SET r.alias_tei    = ISNULL(r.alias_tei, sis.alias),
+                 r.radio_id_tei = ISNULL(r.radio_id_tei, sis.radio_id),
+                 r.num_serie    = CASE WHEN r.num_serie IS NULL
+                                        AND NOT EXISTS (SELECT 1 FROM dbo.radios o WHERE o.num_serie = sis.num_serie)
+                                   THEN sis.num_serie ELSE r.num_serie END,
+                 r.atualizado_em = GETDATE()
+    FROM dbo.radios r
+    INNER JOIN par ON par.indicativo = r.indicativo
+    INNER JOIN sis ON sis.indicativo = r.indicativo
+    WHERE r.alias_tei IS NULL`);
+  resumo.sistema.ligados_por_indicativo = porIndicativo.rowsAffected[0];
+
+  // 3. O que continua a não constar entra como equipamento novo. Vem sem marca
+  //    nem modelo — a exportação do TETRA não os traz —, e leva a proveniência
+  //    em `obs` para não se confundir com o que veio do ficheiro do parque.
+  //    Nem todos são rádios de mão: os alias sem indicativo (PMC01, PM2CM,
+  //    PM551) são consolas, despachos e viaturas.
+  const criados = await pool.request().query(`
+    INSERT INTO dbo.radios (num_serie, indicativo, alias_tei, radio_id_tei, obs)
+    SELECT s.num_serie, s.indicativo, s.alias, s.radio_id,
+           N'Veio do registo TETRA; não constava do ficheiro do parque.'
+    FROM dbo.radios_sistema s
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.radios r WHERE r.num_serie = s.num_serie)
+      AND NOT EXISTS (SELECT 1 FROM dbo.radios r WHERE r.alias_tei = s.alias)`);
+  resumo.sistema.criados_no_parque = criados.rowsAffected[0];
 }
 
 /**
@@ -510,7 +557,7 @@ async function principal() {
   const resumo = {
     parque: { lidas: 0, criados: 0, atribuicoes: 0, vazias: 0 },
     motorola: { lidas: 0, criados: 0 },
-    sistema: { lidas: 0, ligados_por_serie: 0 },
+    sistema: { lidas: 0, ligados_por_serie: 0, ligados_por_indicativo: 0, criados_no_parque: 0 },
     avariados: { lidas: 0, avarias: 0 },
     folha1: { lidas: 0 },
     abates: { lidas: 0, abatidos: 0 },
@@ -518,10 +565,20 @@ async function principal() {
     notas: [],
   };
 
+  // ⚠️ A ORDEM IMPORTA, e o `TEI` é o ÚLTIMO de propósito.
+  //
+  // As folhas do parque, dos abates e dos avariados encontram o equipamento pelo
+  // `garantirRadio()`, que sem número de série procura pelo indicativo **entre
+  // os rádios que também não têm série**. O TEI preenche séries (passo 2 da
+  // ligação), portanto se corresse antes tirava esses rádios do alcance dessa
+  // procura: o `garantirRadio` deixava de os encontrar e criava duplicados —
+  // aconteceu, e custou 52 indicativos repetidos, 27 avarias e 14 abates falsos.
+  //
+  // Correndo no fim, o TEI é a última palavra: liga o que existe e cria o que
+  // falta, e já ninguém procura equipamento depois dele.
   const ordem = [
     ['Radios', ws => importarParque(pool, ws, resumo)],
     ['Motorola', ws => importarMotorola(pool, ws, resumo)],
-    ['TEI', ws => importarSistema(pool, ws, resumo)],
     ['Radios - Abate', ws => importarAbates(pool, ws, resumo)],
     ['Quest', ws => importarConferencia(pool, ws, resumo)],
   ];
@@ -537,6 +594,15 @@ async function principal() {
   if (wsAvariados) {
     process.stdout.write('  Radios Avariados + Folha1… ');
     await importarAvarias(pool, wsAvariados, folha('Folha1'), resumo);
+    console.log('ok');
+  }
+
+  // Por último o TEI — ver a nota na `ordem` acima. Depois daqui já ninguém
+  // procura equipamento pelo indicativo.
+  const wsSistema = folha('TEI');
+  if (wsSistema) {
+    process.stdout.write('  TEI… ');
+    await importarSistema(pool, wsSistema, resumo);
     console.log('ok');
   }
 
