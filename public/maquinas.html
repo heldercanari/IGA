@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Máquinas Fotográficas · IGA</title>
+    <link rel="icon" type="image/png" href="/iga/favicon.png">
+    <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
+         aplica quando corre. Adiado para depois do parse, o browser chega a pintar
+         a página em cru. O ficheiro é local, não vem de CDN nenhum. O lucide fica
+         adiado — é só ícones, e o script de baixo já espera por ele. -->
+    <script src="/iga/tailwind.global.js"></script>
+    <script src="/iga/lucide.min.js" defer></script>
+    <style>
+        /* `hidden` é uma classe do Tailwind, portanto só existe depois de ele
+           compilar. Declará-la aqui garante que os modais e o toast não aparecem
+           empilhados na fracção de segundo anterior. */
+        .hidden { display: none; }
+
+        body, input, select, textarea, button {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        thead.pegajoso th { position: sticky; top: 0; z-index: 10; }
+        tbody tr { line-height: 1.3; }
+        .accao {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 6px; border: none;
+            background: transparent; cursor: pointer; flex-shrink: 0;
+            transition: background-color .15s, transform .1s;
+        }
+        .accao:hover { transform: scale(1.12); }
+        .accao:disabled { opacity: .25; cursor: not-allowed; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded">Saltar para o conteúdo</a>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite" class="fixed top-5 right-5 z-50 hidden items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white" style="min-width:260px">
+    <span id="toastIcone" aria-hidden="true"></span>
+    <span id="toastMsg"></span>
+</div>
+
+<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <img src="/iga/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+    </div>
+</div>
+
+<div id="app" class="max-w-[1400px] mx-auto p-6">
+
+    <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <a href="/iga.html" class="flex items-center gap-4 group" title="Voltar ao início">
+            <img src="/iga/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900 group-hover:text-blue-700 transition">Inventário e Gestão de Ativos
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-400">IGA</span>
+                </h1>
+                <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
+            </div>
+        </a>
+        <div class="text-right flex flex-col items-end gap-1">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                Utilizador: <span id="nomeUtilizador">a carregar…</span>
+            </span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+        </div>
+    </header>
+
+    <!-- Cartões de contagem.
+         Não há avariadas nem abatidas: este tipo não as tem (ver a migração 004).
+         "Sem data" é o que aqui é trabalho por fazer — levantamentos que a folha
+         de origem não datou —, e por isso filtra ao carregar. -->
+    <section aria-label="Resumo das máquinas fotográficas" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <button type="button" data-estado="" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Máquinas</p>
+            <p id="kpiTotal" class="text-2xl font-extrabold text-slate-900">—</p>
+        </button>
+        <button type="button" data-estado="entregue" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Entregues</p>
+            <p id="kpiEntregues" class="text-2xl font-extrabold text-blue-700">—</p>
+        </button>
+        <button type="button" data-estado="disponivel" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Disponíveis</p>
+            <p id="kpiDisponiveis" class="text-2xl font-extrabold text-emerald-700">—</p>
+        </button>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Sem data</p>
+            <p id="kpiSemData" class="text-2xl font-extrabold text-amber-700">—</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">levantamentos por datar</p>
+        </div>
+    </section>
+
+    <main id="conteudo">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+            <div class="flex-1 min-w-[240px]">
+                <label for="procura" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
+                <input id="procura" type="search" placeholder="ID-PM, série, marca, modelo ou quem a tem…"
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="filtroEstado" class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
+                <select id="filtroEstado" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todas</option>
+                    <option value="entregue">Entregues</option>
+                    <option value="disponivel">Disponíveis</option>
+                </select>
+            </div>
+            <button id="btnNova" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+                + Nova máquina
+            </button>
+            <button id="btnExportar" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                Exportar CSV
+            </button>
+        </div>
+
+        <!-- As cinco colunas pedidas: ID-PM, Marca, N. Série, Atribuído e Ações.
+             O modelo, a marca do cartão e a capacidade ficam na ficha. -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                        <tr>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">ID-PM</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Marca</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">N. Série</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Atribuído</th>
+                            <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+            <p id="rodape" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+        </div>
+    </main>
+</div>
+
+<!-- ─── Painel de detalhe ─────────────────────────────────── -->
+<div id="painel" class="hidden fixed inset-0 z-40 flex justify-end">
+    <div class="absolute inset-0 bg-slate-900/40" data-fechar></div>
+    <aside role="dialog" aria-modal="true" aria-labelledby="painelTitulo"
+           class="relative bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl">
+        <header class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-start justify-between gap-4">
+            <div>
+                <h2 id="painelTitulo" class="text-lg font-extrabold text-slate-900">Máquina fotográfica</h2>
+                <p id="painelSubtitulo" class="text-xs text-slate-500"></p>
+            </div>
+            <button data-fechar class="accao text-slate-500 hover:bg-slate-100" aria-label="Fechar">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </header>
+        <div id="painelCorpo" class="p-6 space-y-6"></div>
+    </aside>
+</div>
+
+<!-- ─── Modal de formulário ───────────────────────────────── -->
+<div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-slate-900/50" data-fechar-modal></div>
+    <div role="dialog" aria-modal="true" aria-labelledby="modalTitulo"
+         class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <header class="px-6 py-4 border-b border-slate-200">
+            <h2 id="modalTitulo" class="text-base font-extrabold text-slate-900"></h2>
+            <p id="modalAjuda" class="text-xs text-slate-500 mt-0.5"></p>
+        </header>
+        <form id="modalForm" class="p-6 space-y-4"></form>
+        <footer class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-2xl">
+            <button type="button" data-fechar-modal class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancelar</button>
+            <button type="submit" form="modalForm" id="modalGravar" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Gravar</button>
+        </footer>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+/**
+ * Máquinas fotográficas — o ecrã do quarto tipo de activo.
+ *
+ * A tabela mostra as cinco colunas pedidas (ID-PM, Marca, N. Série, Atribuído e
+ * Ações) e **o resto da informação vive na ficha**: modelo, marca do cartão de
+ * memória, capacidade e o histórico de levantamentos. É a mesma divisão do ecrã
+ * dos rádios — a tabela é a lista, a máquina vê-se a sério na ficha.
+ *
+ * Não há avarias nem abates neste tipo (ver a migração 004), e por isso também
+ * não há estado guardado: uma máquina está entregue se tiver um levantamento por
+ * devolver. É o que a API devolve em `atribuicao_id`.
+ */
+
+const API = '/api/iga/maquinas';   // as rotas deste ecrã
+const API_MODULO = '/api/iga';     // /permissoes é do módulo, não do tipo
+
+const estado = {
+  permissoes: null,
+  maquinas: [],
+  filtros: { q: '', estado: '' },
+  aberto: null,
+};
+
+// ─── Utilitários ───────────────────────────────────────────
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/**
+ * Datas em dd/mm/aaaa, lidas em UTC — mesma razão das outras páginas: o SQL
+ * Server devolve DATE como meia-noite UTC e ler as componentes locais fazia a
+ * data recuar um dia a oeste de Lisboa.
+ */
+function dataPt(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return esc(v);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+let toastTimer = null;
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  const cor = tipo === 'erro' ? 'bg-red-600' : tipo === 'aviso' ? 'bg-amber-600' : 'bg-emerald-600';
+  el.className = `fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white ${cor}`;
+  document.getElementById('toastIcone').innerHTML =
+    `<i data-lucide="${tipo === 'erro' ? 'alert-circle' : tipo === 'aviso' ? 'alert-triangle' : 'check-circle'}" class="w-5 h-5"></i>`;
+  document.getElementById('toastMsg').textContent = msg;
+  if (window.lucide) lucide.createIcons();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+async function pedir(caminho, opcoes, base) {
+  const r = await fetch((base || API) + caminho, Object.assign({ headers: { 'Accept': 'application/json' } }, opcoes));
+  let corpo = null;
+  try { corpo = await r.json(); } catch (e) { /* resposta sem JSON */ }
+  if (!r.ok) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+  return corpo;
+}
+
+function enviar(caminho, dados, metodo) {
+  return pedir(caminho, {
+    method: metodo || 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(dados || {}),
+  });
+}
+
+function etiqueta(entregue) {
+  return entregue
+    ? '<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Entregue</span>'
+    : '<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Disponível</span>';
+}
+
+function linhaCampo(rotulo, valor) {
+  return `<div>
+    <dt class="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">${esc(rotulo)}</dt>
+    <dd class="text-sm text-slate-800">${valor || '<span class="text-slate-300">—</span>'}</dd>
+  </div>`;
+}
+
+/** Quem tem a máquina, para a coluna "Atribuído" e para os títulos. */
+function quemTem(m) {
+  if (!m.atribuicao_id) return null;
+  return m.nome_utilizador || (m.matricula !== null && m.matricula !== undefined ? String(m.matricula) : null);
+}
+
+// ─── Listagem ──────────────────────────────────────────────
+
+async function carregar() {
+  const p = new URLSearchParams();
+  if (estado.filtros.q) p.set('q', estado.filtros.q);
+  if (estado.filtros.estado) p.set('estado', estado.filtros.estado);
+  estado.maquinas = await pedir('/?' + p.toString());
+  desenhar();
+}
+
+function desenhar() {
+  const podeEditar = estado.permissoes && estado.permissoes.canEdit;
+  const podeAdmin = estado.permissoes && estado.permissoes.canAdmin;
+  const corpo = document.getElementById('tabela');
+
+  if (!estado.maquinas.length) {
+    corpo.innerHTML = `<tr><td colspan="5" class="px-4 py-10 text-center text-slate-400 text-sm">
+      Nenhuma máquina encontrada com estes filtros.</td></tr>`;
+    document.getElementById('rodape').textContent = '';
+    return;
+  }
+
+  corpo.innerHTML = estado.maquinas.map(m => {
+    // A data do levantamento vai debaixo do nome: a folha só datou um dos
+    // quatro, e ver quais estão por datar é metade do trabalho deste ecrã.
+    const atribuido = m.atribuicao_id
+      ? `<div class="text-slate-800">${esc(m.nome_utilizador || '—')}
+           ${m.matricula ? `<span class="text-slate-400">· ${esc(m.matricula)}</span>` : ''}</div>
+         <div class="text-[11px] ${m.data_entrega ? 'text-slate-400' : 'text-amber-600 font-semibold'}">
+           ${m.data_entrega ? dataPt(m.data_entrega) : 'sem data de levantamento'}</div>`
+      : '<span class="text-emerald-700 font-semibold text-xs">disponível</span>';
+
+    return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 font-bold text-slate-900">${m.pm_id ? esc(m.pm_id) : '<span class="text-slate-300 font-normal">—</span>'}</td>
+      <td class="px-3 py-2 text-slate-700">${esc(m.marca || '—')}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${m.num_serie ? esc(m.num_serie) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2">${atribuido}</td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">
+        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${m.id}" title="Ver ficha" aria-label="Ver a ficha da máquina ${esc(m.pm_id || m.num_serie || '')}">
+          <i data-lucide="eye" class="w-4 h-4"></i></button>
+        <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${m.id}" title="Entregar" ${podeEditar ? '' : 'disabled'}>
+          <i data-lucide="user-plus" class="w-4 h-4"></i></button>
+        <button class="accao text-emerald-600 hover:bg-emerald-50" data-devolver="${m.id}" title="Devolver" ${podeEditar && m.atribuicao_id ? '' : 'disabled'}>
+          <i data-lucide="undo-2" class="w-4 h-4"></i></button>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-editar="${m.id}" title="Editar" ${podeEditar ? '' : 'disabled'}>
+          <i data-lucide="pencil" class="w-4 h-4"></i></button>
+        <button class="accao text-red-600 hover:bg-red-50" data-apagar="${m.id}" title="Apagar" ${podeAdmin ? '' : 'disabled'}>
+          <i data-lucide="trash-2" class="w-4 h-4"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rodape').textContent =
+    `${estado.maquinas.length} ${estado.maquinas.length === 1 ? 'máquina' : 'máquinas'}` +
+    (estado.filtros.q || estado.filtros.estado ? ' (filtrado)' : '');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function carregarEstatisticas() {
+  const e = await pedir('/estatisticas');
+  document.getElementById('kpiTotal').textContent = e.total;
+  document.getElementById('kpiEntregues').textContent = e.entregues;
+  document.getElementById('kpiDisponiveis').textContent = e.disponiveis;
+  document.getElementById('kpiSemData').textContent = e.entregas_sem_data;
+}
+
+// ─── Detalhe ───────────────────────────────────────────────
+
+/** É aqui que fica o resto da informação: modelo, cartão e capacidade. */
+async function abrirDetalhe(id) {
+  const m = await pedir('/' + id);
+  estado.aberto = m;
+
+  document.getElementById('painelTitulo').textContent =
+    m.pm_id ? `Máquina ${m.pm_id}` : 'Máquina fotográfica';
+  document.getElementById('painelSubtitulo').textContent =
+    `${m.marca || ''} ${m.modelo || ''}`.trim() || '—';
+
+  const entregas = m.atribuicoes.length ? m.atribuicoes.map(a => `
+    <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
+      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.data_devolucao ? 'bg-slate-300' : 'bg-blue-500'}"></span>
+      <div class="text-sm">
+        <div class="font-semibold text-slate-800">${esc(a.nome_utilizador || 'sem nome')}
+          ${a.matricula ? `<span class="text-slate-400 font-normal">· ${esc(a.matricula)}</span>` : ''}</div>
+        <div class="text-xs text-slate-500">
+          ${a.data_entrega ? dataPt(a.data_entrega) : '<span class="text-amber-600 font-semibold">sem data</span>'}
+          → ${a.data_devolucao ? dataPt(a.data_devolucao) : '<span class="text-blue-600 font-semibold">ainda a tem</span>'}
+        </div>
+        ${a.obs ? `<div class="text-xs text-slate-400 mt-0.5">${esc(a.obs)}</div>` : ''}
+      </div>
+    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Nunca foi levantada.</li>';
+
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex items-center gap-2 mb-3">
+        ${etiqueta(!!m.atribuicao_id)}
+        ${estado.permissoes.canEdit ? '<button id="btnEditar" class="ml-auto text-xs font-semibold text-blue-600 hover:underline">Editar equipamento</button>' : ''}
+      </div>
+      <dl class="grid grid-cols-2 gap-3">
+        ${linhaCampo('ID-PM', esc(m.pm_id))}
+        ${linhaCampo('N. Série', m.num_serie ? `<span class="font-mono text-xs">${esc(m.num_serie)}</span>` : '')}
+        ${linhaCampo('Marca', esc(m.marca))}
+        ${linhaCampo('Modelo', esc(m.modelo))}
+        ${linhaCampo('Marca cartão de memória', esc(m.cartao_marca))}
+        ${linhaCampo('Capacidade', esc(m.cartao_capacidade))}
+      </dl>
+      ${m.obs ? `<p class="mt-3 text-sm bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3">${esc(m.obs)}</p>` : ''}
+    </section>
+
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Levantamentos</h3>
+      <ul>${entregas}</ul>
+    </section>`;
+
+  document.getElementById('painel').classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+function fecharPainel() {
+  document.getElementById('painel').classList.add('hidden');
+  estado.aberto = null;
+}
+
+// ─── Modais ────────────────────────────────────────────────
+
+let submeterModal = null;
+
+function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalAjuda').textContent = ajuda || '';
+  document.getElementById('modalGravar').textContent = textoGravar || 'Gravar';
+  document.getElementById('modalForm').innerHTML = campos.map(c => {
+    const base = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+    const controlo = c.tipo === 'textarea'
+      ? `<textarea id="c_${c.nome}" name="${c.nome}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`
+      : `<input id="c_${c.nome}" name="${c.nome}" type="${c.tipo || 'text'}" value="${esc(c.valor || '')}"
+           ${c.lista ? `list="${c.lista}"` : ''} ${c.obrigatorio ? 'required' : ''}
+           placeholder="${esc(c.dica || '')}" class="${base}">`;
+    return `<div>
+      <label for="c_${c.nome}" class="block text-xs font-semibold text-slate-600 mb-1">${esc(c.rotulo)}</label>
+      ${controlo}
+      ${c.nota ? `<p class="text-[11px] text-slate-400 mt-1">${esc(c.nota)}</p>` : ''}
+    </div>`;
+  }).join('') + '<datalist id="listaPessoas"></datalist>';
+
+  submeterModal = gravar;
+  document.getElementById('modal').classList.remove('hidden');
+  const primeiro = document.querySelector('#modalForm input, #modalForm textarea');
+  if (primeiro) primeiro.focus();
+}
+
+function fecharModal() {
+  document.getElementById('modal').classList.add('hidden');
+  submeterModal = null;
+}
+
+function dadosDoModal() {
+  const dados = {};
+  new FormData(document.getElementById('modalForm')).forEach((v, k) => { dados[k] = String(v).trim(); });
+  return dados;
+}
+
+/** Recarrega o que está à vista depois de uma alteração. */
+async function refrescar(idDetalhe) {
+  await Promise.all([carregar(), carregarEstatisticas()]);
+  if (idDetalhe) await abrirDetalhe(idDetalhe);
+}
+
+function maquina(id) {
+  return estado.maquinas.find(m => m.id === id) || estado.aberto || {};
+}
+
+/**
+ * O autocompletar de pessoas vem do módulo dos rádios, como no ecrã dos
+ * telemóveis: é lá que está a lista do questionário, com matrículas e nomes. É
+ * o único sítio onde este ecrã fala com outro tipo, e é só de leitura.
+ */
+async function carregarPessoas() {
+  try {
+    const pessoas = await pedir('/utilizadores', null, API_MODULO + '/radios');
+    const lista = document.getElementById('listaPessoas');
+    if (lista) lista.innerHTML = pessoas.map(p =>
+      `<option value="${esc(p.matricula)}">${esc(p.nome || '')}</option>`).join('');
+  } catch (e) { /* o autocompletar é um extra: sem ele o campo continua a funcionar */ }
+}
+
+function modalEntregar(id) {
+  const m = maquina(id);
+  const tem = quemTem(m);
+  abrirModal({
+    titulo: `Entregar a máquina ${m.pm_id || ''}`.trim(),
+    ajuda: tem ? `Está com ${tem} — esse levantamento é fechado nesta data.` : '',
+    campos: [
+      { nome: 'matricula', rotulo: 'Matrícula', tipo: 'text', lista: 'listaPessoas', dica: '144642' },
+      { nome: 'nome_utilizador', rotulo: 'Nome', tipo: 'text', dica: 'Quem leva a máquina' },
+      { nome: 'data_entrega', rotulo: 'Data do levantamento', tipo: 'date', valor: hojeISO(),
+        nota: 'Podes deixar vazio se não se souber — é o caso de três dos que vieram da folha.' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Entregar',
+    gravar: async d => {
+      await enviar(`/${id}/atribuir`, d);
+      toast('Levantamento registado.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+  carregarPessoas();
+}
+
+function modalDevolver(id) {
+  const m = maquina(id);
+  const tem = quemTem(m);
+  abrirModal({
+    titulo: `Devolver a máquina ${m.pm_id || ''}`.trim(),
+    ajuda: tem ? `Está com ${tem}.` : '',
+    campos: [
+      { nome: 'data_devolucao', rotulo: 'Data de devolução', tipo: 'date', valor: hojeISO() },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', dica: 'Estado em que veio, por exemplo' },
+    ],
+    textoGravar: 'Devolver',
+    gravar: async d => {
+      await enviar(`/${id}/devolver`, d);
+      toast('Devolução registada.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+}
+
+function modalEquipamento(m) {
+  const nova = !m;
+  m = m || {};
+  abrirModal({
+    titulo: nova ? 'Nova máquina fotográfica' : `Editar a máquina ${m.pm_id || ''}`.trim(),
+    ajuda: nova ? 'Basta o ID-PM ou o número de série.' : '',
+    campos: [
+      { nome: 'pm_id', rotulo: 'ID-PM', tipo: 'text', valor: m.pm_id, dica: '16 PM' },
+      { nome: 'marca', rotulo: 'Marca', tipo: 'text', valor: m.marca || (nova ? 'Kodak' : ''),
+        nota: 'As que vieram da folha dizem "Kodak W" ou "Kodak R" — ficou como lá estava.' },
+      { nome: 'modelo', rotulo: 'Modelo', tipo: 'text', valor: m.modelo || (nova ? 'PIXPRO WPZ2' : '') },
+      { nome: 'num_serie', rotulo: 'N. Série', tipo: 'text', valor: m.num_serie, dica: 'M061640752' },
+      { nome: 'cartao_marca', rotulo: 'Marca do cartão de memória', tipo: 'text', valor: m.cartao_marca, dica: 'Lexar, Sandisk…' },
+      { nome: 'cartao_capacidade', rotulo: 'Capacidade', tipo: 'text', valor: m.cartao_capacidade, dica: '32 GB' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: m.obs },
+    ],
+    gravar: async d => {
+      if (nova) {
+        const criada = await enviar('/', d);
+        toast('Máquina criada.');
+        await refrescar();
+        await abrirDetalhe(criada.id);
+      } else {
+        await enviar('/' + m.id, d, 'PUT');
+        toast('Alterações gravadas.');
+        await refrescar(estado.aberto ? m.id : null);
+      }
+    },
+  });
+}
+
+// ─── Exportação ────────────────────────────────────────────
+
+/**
+ * CSV com ponto e vírgula e BOM: é o que o Excel em português abre sem pedir
+ * nada. Com vírgula, o Excel PT junta tudo numa coluna só.
+ *
+ * Leva as colunas da tabela **e as da ficha**: a exportação é para trabalhar o
+ * parque fora do ecrã, e aí o modelo e o cartão fazem falta.
+ */
+function exportarCSV() {
+  const colunas = ['pm_id', 'marca', 'modelo', 'num_serie', 'cartao_marca', 'cartao_capacidade',
+                   'matricula', 'nome_utilizador', 'data_entrega', 'obs'];
+  const celula = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v).replace(/"/g, '""');
+    return /[";\n]/.test(s) ? `"${s}"` : s;
+  };
+  const linhas = [colunas.join(';')].concat(estado.maquinas.map(m =>
+    colunas.map(c => celula(c === 'data_entrega' && m[c] ? dataPt(m[c]) : m[c])).join(';')));
+  const url = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `maquinas_${hojeISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Ligações ──────────────────────────────────────────────
+
+let temporizadorProcura = null;
+function procuraAdiada(fn) {
+  clearTimeout(temporizadorProcura);
+  temporizadorProcura = setTimeout(fn, 250);
+}
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-editar],[data-apagar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnNova,#btnExportar');
+  if (!alvo) return;
+  const d = alvo.dataset;
+  try {
+    if (alvo.matches('[data-fechar]')) return fecharPainel();
+    if (alvo.matches('[data-fechar-modal]')) return fecharModal();
+    if (alvo.id === 'btnExportar') return exportarCSV();
+    if (alvo.id === 'btnNova') return modalEquipamento(null);
+    if (alvo.id === 'btnEditar') return modalEquipamento(estado.aberto);
+    if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
+    if (d.entregar) return modalEntregar(Number(d.entregar));
+    if (d.devolver) return modalDevolver(Number(d.devolver));
+    if (d.editar) return modalEquipamento(maquina(Number(d.editar)));
+    if (d.apagar) {
+      const m = maquina(Number(d.apagar));
+      if (!confirm(`Apagar a máquina ${m.pm_id || m.num_serie || ''}? A ficha e os levantamentos desaparecem.`)) return;
+      await pedir('/' + d.apagar, { method: 'DELETE' });
+      toast('Máquina apagada.');
+      if (estado.aberto && estado.aberto.id === Number(d.apagar)) fecharPainel();
+      return refrescar();
+    }
+    if (d.estado !== undefined && alvo.classList.contains('cartao')) {
+      estado.filtros.estado = d.estado;
+      document.getElementById('filtroEstado').value = d.estado;
+      return carregar();
+    }
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+});
+
+document.getElementById('modalForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!submeterModal) return;
+  const botao = document.getElementById('modalGravar');
+  botao.disabled = true;
+  try {
+    await submeterModal(dadosDoModal());
+    fecharModal();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+document.getElementById('procura').addEventListener('input', ev => {
+  estado.filtros.q = ev.target.value.trim();
+  procuraAdiada(() => carregar().catch(e => toast(e.message, 'erro')));
+});
+document.getElementById('filtroEstado').addEventListener('change', ev => {
+  estado.filtros.estado = ev.target.value;
+  carregar().catch(e => toast(e.message, 'erro'));
+});
+
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (!document.getElementById('modal').classList.contains('hidden')) return fecharModal();
+  if (!document.getElementById('painel').classList.contains('hidden')) return fecharPainel();
+});
+
+// ─── Arranque ──────────────────────────────────────────────
+
+function mostrarErro(titulo, detalhe) {
+  document.getElementById('erroTitulo').textContent = titulo;
+  document.getElementById('erroDetalhe').textContent = detalhe || '';
+  document.getElementById('ecraErro').classList.remove('hidden');
+}
+
+async function arrancar() {
+  try {
+    estado.permissoes = await pedir('/permissoes', null, API_MODULO);
+  } catch (err) {
+    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+  }
+  if (!estado.permissoes.canView) {
+    return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
+      'Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
+  }
+
+  document.getElementById('nomeUtilizador').textContent =
+    estado.permissoes.nome || estado.permissoes.username || '—';
+  document.getElementById('etiquetaAcesso').textContent =
+    estado.permissoes.canAdmin ? 'Administração' : estado.permissoes.canEdit ? 'Escrita' : 'Só consulta';
+  if (estado.permissoes.canEdit) document.getElementById('btnNova').classList.remove('hidden');
+
+  try {
+    await Promise.all([carregarEstatisticas(), carregar()]);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+arrancar();
+</script>
+</body>
+</html>

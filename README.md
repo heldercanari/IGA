@@ -8,7 +8,7 @@ API `/api/iga/<tipo>`, assets em `public/iga/`, grupos `IGA`, `IGA-Consulta` e `
 Os nomes por tipo de equipamento — `radios`, `telemoveis`, as tabelas e as bases — não levam
 o prefixo: pertencem ao tipo, não à aplicação.
 
-Três tipos de activo, uma página para cada:
+Quatro tipos de activo, uma página para cada:
 
 - **Rádios** — parque TETRA. Fonte actual: `master radios.xlsx` (identificação) +
   `atribuidos.xlsx` (quem tem o quê) + `avarias.csv`, no próprio repositório (o que está
@@ -19,6 +19,10 @@ Três tipos de activo, uma página para cada:
   (`C:\Apps\`, uma folha). **Este tipo não segue o molde dos outros dois**: uma impressora não
   é entregue a ninguém, está instalada num serviço — não tem entregas, avarias, abates nem
   coluna `estado`. O que se guarda dela é onde está.
+- **Máquinas fotográficas** — 15 Kodak PIXPRO WPZ2 com cartão de memória. Substitui a folha
+  `Kodak PIXPRO` do `Kodak.xlsx` (`C:\Apps\`, o livro geral do NSIC com 27 folhas). **Tem
+  entregas** — uma máquina é levantada por alguém —, mas não tem avarias, abates nem coluna
+  `estado`: está entregue quem tiver um levantamento por devolver.
 
 > Este repositório é **um módulo destacado**, não um projecto autónomo — mesmo molde do
 > `correspondencia-pm`. A casa a sério do código é o repositório da intranet; aqui está só o
@@ -27,7 +31,7 @@ Três tipos de activo, uma página para cada:
 > para a cópia ser ficheiro-a-ficheiro.
 
 **Uma página por tipo de equipamento**, independente das outras: `public/radios.html`,
-`public/telemoveis.html` e `public/impressoras.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
+`public/telemoveis.html`, `public/impressoras.html` e `public/maquinas.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
 abertos: cada página é dona do seu ecrã, e em troca uma correcção de comportamento tem de ser
 repetida em todas. A secção *[Acrescentar um tipo de equipamento](#acrescentar-um-tipo-de-equipamento)*
 diz o que é preciso tocar.
@@ -73,6 +77,10 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\001_radios.sql
 sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\003_impressoras.sql
 ```
 
+```bash
+sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\004_maquinas.sql
+```
+
 - `000_seed_local.sql` — andaime de desenvolvimento: cria `colaboradores`, `grupos`,
   `grupo_membros` e `admin_users` com utilizadores de teste. **Não é uma migração da
   intranet**; lá estas tabelas já existem.
@@ -81,6 +89,9 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\003_impressoras.sq
   impressoras não têm base própria nem pool própria. Duas tabelas só, `impressoras` e
   `impressoras_importacoes` — sem `_atribuicoes`, `_avarias` nem `_abates`, e sem coluna
   `estado`; o ficheiro explica porquê.
+- `004_maquinas.sql` — as máquinas fotográficas, também nesta base. Leva `maquinas_atribuicoes`
+  (ao contrário das impressoras: uma máquina é levantada por alguém), mas continua sem
+  `_avarias`, `_abates` e sem coluna `estado`.
 
 ### A segunda base: telemóveis
 
@@ -116,11 +127,20 @@ npm run importar-telemoveis
 npm run importar-impressoras
 ```
 
+```bash
+npm run importar-maquinas
+```
+
 O primeiro lê `C:\Apps\master radios.xlsx` (identificação), `C:\Apps\atribuidos.xlsx` (quem tem
 cada rádio) e `avarias.csv` — este último dentro do próprio repositório, não em `C:\Apps\`,
 porque é o único das três pensado para se editar directamente e ficar no histórico do git. Os
 caminhos das duas primeiras estão fixos no topo do script, não são parâmetro. O segundo lê
 `C:\Apps\telemoveis\Livro 1.xlsx`; o terceiro, `C:\Apps\impressoras Konica.xlsx`.
+
+⚠️ **O quarto lê UMA folha de um livro com 27.** O `C:\Apps\Kodak.xlsx` é o inventário geral do
+NSIC — impressoras, telemóveis, tablets, portáteis, GPS, cofres —, e o importador das máquinas
+vai à folha `Kodak PIXPRO` **pelo nome**, nunca "a primeira folha" (a primeira é a das
+impressoras Lexmark). Se a folha for renomeada, o script pára e lista as que existem.
 
 Correm as vezes que forem precisas. Ao contrário do importador dos telemóveis, o dos rádios
 **não tem `--limpar`**: sincroniza em vez de destruir — uma segunda corrida fecha o que já não
@@ -153,6 +173,7 @@ npm run harness
 - Rádios → <http://localhost:3943/radios.html>
 - Telemóveis → <http://localhost:3943/telemoveis.html>
 - Impressoras → <http://localhost:3943/impressoras.html>
+- Máquinas fotográficas → <http://localhost:3943/maquinas.html>
 
 A entrada é a página a dar às pessoas e a pôr no menu da intranet: mostra um cartão por
 equipamento com as contagens, e abre a página respectiva. O cabeçalho das páginas de
@@ -176,7 +197,7 @@ montado pelo `server/index.js`.
 
 ## O que o módulo faz
 
-**Parque** — Alias, Rádio, N. Série, Estado, Atribuído, Data e Acções. O detalhe completo (TEI,
+**Parque** — Alias, Rádio, N. Série, Estado, Atribuído, Data e Ações. O detalhe completo (TEI,
 ISSI, marca/modelo, histórico de entregas e avarias) está na ficha, atrás do botão de ver — é lá
 que o rádio se vê a sério, a tabela é só a lista. Procura, filtros e exportação para CSV
 continuam a funcionar sobre as mesmas colunas.
@@ -231,21 +252,43 @@ que se escreve no ecrã.
 > maneira de saber qual dos dois valores está errado. O ecrã assinala a linha com um triângulo
 > âmbar e explica-a na ficha; o aviso desaparece sozinho quando o valor certo for gravado.
 
+**Máquinas fotográficas** — 15 Kodak PIXPRO WPZ2. A tabela tem cinco colunas — **ID-PM, Marca,
+N. Série, Atribuído e Ações** — e **o resto da informação vive na ficha**: modelo, marca do
+cartão de memória, capacidade e o histórico de levantamentos. É a mesma divisão do ecrã dos
+rádios: a tabela é a lista, a máquina vê-se a sério na ficha.
+
+Entregar a outra pessoa fecha o levantamento anterior em vez de o apagar, como nos rádios e nos
+telemóveis. **A data de levantamento é opcional**, ao contrário dos outros dois: a folha de
+origem datou um dos quatro e o ecrã tem de poder registar o mesmo sem inventar um dia — as
+linhas por datar aparecem a âmbar na coluna "Atribuído" e contadas no KPI "Sem data".
+
+A **capacidade guarda-se como `32 GB`**: a folha escreve-a de três maneiras ("32Gb", "32GB",
+"32 Gb") e a base guarda uma, com o `B` de *byte* em maiúscula (o `b` minúsculo é *bit*, e um
+cartão de "32 Gb" à letra tinha 4 GB) e o espaço que separa o número da unidade. Vale para o
+que entra pela importação e para o que se escreve no ecrã; arruma-se a unidade, nunca o número.
+
+> ⚠️ Duas coisas que vêm da folha e ficaram como estavam: a **marca diz "Kodak W" ou "Kodak R"**
+> (o W e o R distinguem alguma coisa que a folha não explica, e parti-los era inventar o
+> significado de uma letra) e a coluna "Levantou" traz o **username e não o nome**
+> (`claudino.antunes`), com a matrícula ao lado. O ecrã tem o autocompletar do
+> `/radios/utilizadores` para quem quiser escrever o nome a sério por cima.
+
 ## API
 
 Tudo debaixo de `/api/iga`. O gate de VER está aplicado ao router inteiro; as mutações
 levam `exigirEdicao`, e o abate e a remoção `exigirAdmin`.
 
 Cada tipo de equipamento tem o seu router debaixo do seu nome — `/api/iga/radios/…`,
-`/api/iga/telemoveis/…` e `/api/iga/impressoras/…` —, e o `/permissoes` é do módulo, comum aos
-três.
+`/api/iga/telemoveis/…`, `/api/iga/impressoras/…` e `/api/iga/maquinas/…` —, e o `/permissoes`
+é do módulo, comum aos quatro.
 
 | Método | Rota | Quem |
 |---|---|---|
 | GET | `/permissoes` | aberto (responde `canView:false`) |
 | GET | `<tipo>/` · `<tipo>/:id` · `<tipo>/estatisticas` | ver |
 | POST · PUT | `<tipo>/` · `<tipo>/:id` | editar |
-| POST | `<tipo>/:id/atribuir` · `/devolver` · `/avarias` | editar (rádios e telemóveis) |
+| POST | `<tipo>/:id/atribuir` · `/devolver` | editar (menos impressoras) |
+| POST | `<tipo>/:id/avarias` | editar (rádios e telemóveis) |
 | POST | `<tipo>/avarias/:id/reparar` | editar (rádios e telemóveis) |
 | POST · DELETE | `<tipo>/:id/abate` | administração (rádios e telemóveis) |
 | DELETE | `<tipo>/:id` | administração |
@@ -253,10 +296,10 @@ três.
 | GET | `telemoveis/:id/credenciais` | administração (só telemóveis) |
 | GET | `impressoras/locais` | ver (só impressoras) |
 
-⚠️ **O `PUT` das impressoras grava só os campos que vierem no corpo**; o dos outros dois grava
-a lista toda e apaga o que não vier. É deliberado: a acção mais comum nas impressoras é mudar
-uma de serviço, um pedido com um campo só, e com a regra dos outros isso apagava o IP, a série
-e o modelo.
+⚠️ **O `PUT` das impressoras e das máquinas grava só os campos que vierem no corpo**; o dos
+rádios e dos telemóveis grava a lista toda e apaga o que não vier. É deliberado: nas
+impressoras a acção mais comum é mudar uma de serviço, um pedido com um campo só, e com a regra
+dos outros isso apagava o IP, a série e o modelo.
 
 ## Acrescentar um tipo de equipamento
 
@@ -272,9 +315,10 @@ Cada tipo é uma página e um router próprios. Para juntar, por exemplo, comput
 4. **Página** — `public/computadores.html`. O ponto de partida é o `telemoveis.html` para um
    tipo que se entrega a pessoas, ou o `impressoras.html` para um que não se entregue.
 5. **Cartão na página de entrada** — uma entrada em `TIPOS`, no `public/iga.html`: nome,
-   descrição, ícone, página, caminho da API e as quatro `contagens` do rodapé do cartão (o
-   `campo` de cada uma é a chave que vem do `/estatisticas` desse tipo; os tipos que se
-   entregam partilham a lista `CONTAGENS_PARQUE`). É o único sítio onde a lista de tipos está
+   descrição, ícone, página, caminho da API e as `contagens` do rodapé do cartão — de uma a
+   quatro, e a grelha ajusta-se (o `campo` de cada uma é a chave que vem do `/estatisticas`
+   desse tipo; os tipos com o parque completo partilham a lista `CONTAGENS_PARQUE`). **Não
+   inventes números para encher as quatro**: as máquinas fotográficas mostram três. É o único sítio onde a lista de tipos está
    escrita à mão: as páginas de equipamento não têm barra de navegação entre tipos (cada uma
    é dedicada ao seu), e a navegação faz-se toda pela entrada.
 6. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
@@ -282,11 +326,21 @@ Cada tipo é uma página e um router próprios. Para juntar, por exemplo, comput
 
 Os grupos de acesso **não mudam**: são do módulo, valem para todos os tipos.
 
-**O molde não é obrigatório** — as impressoras (`003`) são o precedente. Um tipo que não se
-entregue a pessoas não leva `_atribuicoes`; um que não tenha avarias registadas não leva
-`_avarias`, `_abates` nem coluna `estado`, e nesse caso também não há `recalcularEstado()`.
-Repetir a forma por simetria dá tabelas que ninguém escreve e botões desligados no ecrã. O que
-não muda são os seis passos acima e os grupos de acesso.
+**O molde não é obrigatório, escolhe-se por peça** — as impressoras (`003`) e as máquinas
+fotográficas (`004`) são os precedentes, e escolheram diferente:
+
+| | `_atribuicoes` | `_avarias` / `_abates` | coluna `estado` |
+|---|---|---|---|
+| rádios, telemóveis | sim | sim | sim, com `recalcularEstado()` |
+| impressoras | **não** — não se entregam | não | **não** |
+| máquinas fotográficas | **sim** — levantam-se | não | **não** — lê-se da entrega aberta |
+
+Um tipo que não se entregue a pessoas não leva `_atribuicoes`; um que não tenha avarias
+registadas não leva `_avarias` nem `_abates`. E **a coluna `estado` só se justifica com a
+precedência dos quatro valores** (abatido > avariado > atribuído > disponível) a vir de três
+tabelas: com uma tabela só, a pergunta faz-se onde é precisa e não há segunda fonte de verdade
+para desalinhar. Repetir a forma por simetria dá tabelas que ninguém escreve e botões
+desligados no ecrã. O que não muda são os seis passos acima e os grupos de acesso.
 
 ## Grupos de acesso
 

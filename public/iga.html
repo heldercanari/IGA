@@ -121,7 +121,32 @@ const TIPOS = [
       { rotulo: 'sem local', campo: 'sem_local', cor: 'text-amber-700' },
     ],
   },
+  {
+    chave: 'maquinas',
+    nome: 'Máquina Fotográfica',
+    descricao: 'Kodak PIXPRO',
+    icone: 'camera',
+    pagina: '/maquinas.html',
+    api: '/maquinas',
+    // Entregam-se a pessoas, mas não têm avarias nem abates (ver a migração
+    // 004): das quatro contagens do parque só duas fazem sentido. A terceira é
+    // o que aqui está por resolver — levantamentos que a folha não datou.
+    contagens: [
+      { rotulo: 'entregues', campo: 'entregues', cor: 'text-blue-700' },
+      { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700' },
+      { rotulo: 'sem data', campo: 'entregas_sem_data', cor: 'text-amber-700' },
+    ],
+  },
 ];
+
+/**
+ * As colunas da grelha das contagens, por número de contagens.
+ *
+ * Escritas por extenso e não interpoladas (`grid-cols-${n}`) de propósito: o
+ * Tailwind compila as classes que **encontra no ficheiro**, e uma classe montada
+ * em execução não existe para ele — a grelha saía sem colunas nenhumas.
+ */
+const GRELHA_CONTAGENS = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
 
 function esc(v) {
   if (v === null || v === undefined) return '';
@@ -171,7 +196,7 @@ function cartao(tipo, e, aviso) {
       <span class="text-3xl font-extrabold text-slate-900">${e ? esc(e.total) : '—'}</span>
     </div>
 
-    <div class="grid grid-cols-4 gap-2 pt-4 border-t border-slate-100">
+    <div class="grid ${GRELHA_CONTAGENS[tipo.contagens.length] || 'grid-cols-4'} gap-2 pt-4 border-t border-slate-100">
       ${tipo.contagens.map(c => contagem(c.rotulo, e && e[c.campo], c.cor)).join('')}
     </div>
 

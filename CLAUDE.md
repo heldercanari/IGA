@@ -17,9 +17,13 @@ código de erro `IGA_SEM_ACESSO`. Nos ecrãs aparece o nome por extenso — "Inv
 de Ativos" — com a sigla ao lado; só o separador do browser leva `· IGA`, que é o que lá cabe.
 
 **Os nomes por tipo de equipamento não levam o prefixo**: `radios`, `telemoveis`,
-`impressoras`, as páginas, as tabelas (`radios_*`, `telemoveis_*`, `impressoras_*`) e as bases
-pertencem ao tipo, não à aplicação. Um tipo novo entra com o seu nome, não com
-`iga_qualquer_coisa`.
+`impressoras`, `maquinas`, as páginas, as tabelas (`radios_*`, `telemoveis_*`, `impressoras_*`,
+`maquinas_*`) e as bases pertencem ao tipo, não à aplicação. Um tipo novo entra com o seu nome,
+não com `iga_qualquer_coisa`.
+
+**Os nomes de código são uma palavra**, mesmo quando o nome por extenso não é: as máquinas
+fotográficas são `maquinas` nas tabelas, na API e na página, e **Máquina Fotográfica** só nos
+ecrãs — a mesma divisão que o próprio IGA faz entre a sigla e o nome inteiro.
 
 ## O que não se altera aqui
 
@@ -43,13 +47,14 @@ pertencem ao tipo, não à aplicação. Um tipo novo entra com o seu nome, não 
 - ⚠️ **Sem `#` nas passwords do `.env`.** O `dotenv` corta um valor sem aspas no primeiro
   cardinal, e o que chega ao driver é só o princípio — o erro que se vê é "Login failed".
 
-## Duas bases de dados, três tipos
+## Duas bases de dados, quatro tipos
 
 - **Os rádios estão na `RadiosDev` e os telemóveis na `TelemoveisDev`.** Duas pools: o `db.js`
   (cópia da intranet) e o `db-telemoveis.js`, que só existe por causa disto.
-- **As impressoras ficam na base do `db.js` — a mesma dos rádios — e não têm pool própria.**
-  Base própria é a excepção que os telemóveis são, não a regra: um `db-impressoras.js` era uma
-  terceira ligação para chegar ao mesmo sítio. Um tipo novo só leva pool quando levar base.
+- **As impressoras e as máquinas fotográficas ficam na base do `db.js` — a mesma dos rádios — e
+  não têm pool própria.** Base própria é a excepção que os telemóveis são, não a regra: um
+  `db-impressoras.js` era uma terceira ligação para chegar ao mesmo sítio. Um tipo novo só leva
+  pool quando levar base.
 - ⚠️ **Nunca qualifiques a base no SQL.** Nada de `TelemoveisDev.dbo.telemoveis` nem de nomes
   de três partes: a separação vive na ligação, não nas consultas. **Na intranet os módulos
   partilham a mesma base**, e é assim que juntar tudo é apagar o `DB_DATABASE_TELEMOVEIS` do
@@ -182,6 +187,43 @@ decisões por parecerem esquecimentos.
   (calcula a cada desenho, para o aviso desaparecer sozinho quando alguém corrigir). **Não a
   gravaste numa coluna, não a graves agora**: era um valor a envelhecer.
 
+## As máquinas fotográficas: entregas sim, estado não
+
+O quarto tipo (`004`) escolhe do molde peça a peça, como as impressoras — mas escolhe
+diferente. Vale a pena ver a tabela do README (*Acrescentar um tipo de equipamento*) antes de
+assumir o que este ficheiro tem.
+
+- **Tem `maquinas_atribuicoes`**, no molde do `telemoveis_atribuicoes`: uma máquina fotográfica
+  é levantada por alguém, ao contrário de uma impressora.
+- **Não tem coluna `estado`, e não é esquecimento.** Sem avarias nem abates sobrava o par
+  disponível/atribuído, que se lê da existência de uma entrega aberta — a `ENTREGA_ABERTA` do
+  `maquinas.js`, um `OUTER APPLY` que a listagem e o detalhe já fazem. Guardá-lo numa coluna
+  era arranjar uma segunda fonte de verdade para o que já se sabe. **Por isso também não há
+  `recalcularEstado()` aqui** — não procures o que não existe.
+  Isto **não contradiz** a regra dos rádios ("o estado é uma coluna, não uma consulta"): lá são
+  quatro valores com precedência, vindos de três tabelas. Aqui é uma pergunta a uma tabela só.
+- ⚠️ **A data de entrega é opcional neste tipo**, ao contrário dos outros. Três dos quatro
+  levantamentos da folha não têm data e não se inventa nenhuma — nem sequer há um dia de
+  apuramento comum como o `DATA_ATRIBUICAO_PADRAO` dos rádios. O ecrã mostra-as a âmbar e o KPI
+  "Sem data" conta-as. **Não ponhas um `|| hoje()` no `/atribuir`**: fecha-se a entrega anterior
+  com a data de hoje, mas a nova entrega fica sem data se não vier nenhuma.
+- ⚠️ **O importador lê UMA folha de um livro com 27.** O `Kodak.xlsx` é o inventário geral do
+  NSIC e a primeira folha é a das impressoras Lexmark. O `importar_maquinas.js` vai à `Kodak
+  PIXPRO` **pelo nome** e pára com a lista das folhas se ela não existir — nunca "a primeira".
+  Pela mesma razão, **o cabeçalho está na linha 2** (a 1 é o título esticado A1:F1) e os dados
+  começam na 3; e "Levantou" ocupa duas colunas debaixo de uma célula juntada (G2:H2), o
+  username numa e a matrícula na outra.
+- **A capacidade guarda-se como `32 GB`.** A folha escreve-a de três maneiras (`32Gb`, `32GB`,
+  `32 Gb`); a base guarda uma, com o **`B` maiúsculo** — `B` é *byte* e `b` é *bit*, e um cartão
+  de "32 Gb" à letra tinha 4 GB — e o espaço que separa a grandeza da unidade. É a
+  `normalizarCapacidade()`, **em duas cópias** (router e importador), como o `normalizarIP()`
+  das impressoras: se mexeres numa, mexe na outra. ⚠️ **Arruma a unidade, nunca o número** —
+  nem a vírgula decimal, que em português é a certa — e só toca no que reconhece: um valor que
+  não seja um número seguido de KB/MB/GB/TB passa intacto.
+- **O que veio da folha e fica como está**: a marca diz `Kodak W` / `Kodak R` (o W e o R
+  distinguem algo que a folha não explica — parti-los era inventar o significado de uma letra)
+  e a coluna "Levantou" traz o **username**, não o nome.
+
 ## Credenciais dos telemóveis
 
 - ⚠️ **Nenhuma consulta de listagem ou de detalhe pode devolver `pin`, `puk`, `utilizador` ou
@@ -206,8 +248,8 @@ decisões por parecerem esquecimentos.
 
 ## Uma página por tipo de equipamento
 
-- **`public/radios.html`, `public/telemoveis.html` e `public/impressoras.html` são
-  independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
+- **`public/radios.html`, `public/telemoveis.html`, `public/impressoras.html` e
+  `public/maquinas.html` são independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
   de uma página: cada tipo tem o seu ecrã, e o próximo equipamento será outra página. Foi
   decidido assim com o custo à vista — **não "arrumes" isto para um ficheiro comum** por
   parecer duplicação; é uma escolha, não um descuido. Se algum dia for para mudar, é conversa
@@ -221,11 +263,15 @@ decisões por parecerem esquecimentos.
   A navegação entre tipos é sempre pela entrada: cabeçalho → `iga.html` → outro cartão. Por
   isso **a lista de tipos vive num só sítio**, o `TIPOS` do `iga.html`; não a espalhes pelas
   páginas com um `<nav>` de atalhos — foi tirado de propósito.
-- **Cada tipo traz as suas `contagens` no `TIPOS`**, que são os quatro números do rodapé do
-  cartão. Os que se entregam a pessoas partilham a `CONTAGENS_PARQUE` (entregues, disponíveis,
-  avariados, abatidos); as impressoras contam o sítio (instaladas, serviços, modelos, sem
-  local). Não voltes a fixar os quatro rótulos no `cartao()` — era o que fazia o cartão das
-  impressoras dizer "abatidos —" para sempre.
+- **Cada tipo traz as suas `contagens` no `TIPOS`** — de uma a quatro, que são os números do
+  rodapé do cartão. Os rádios e os telemóveis partilham a `CONTAGENS_PARQUE` (entregues,
+  disponíveis, avariados, abatidos); as impressoras contam o sítio; as máquinas fotográficas
+  trazem **três** e a grelha ajusta-se. Não voltes a fixar os quatro rótulos no `cartao()` —
+  era o que fazia o cartão das impressoras dizer "abatidos —" para sempre —, nem inventes um
+  quarto número para encher a linha.
+- ⚠️ **As classes da grelha estão escritas por extenso no `GRELHA_CONTAGENS`**, e não montadas
+  com `grid-cols-${n}`. O Tailwind compila as classes que **encontra no ficheiro**: uma classe
+  construída em execução não existe para ele, e a grelha sai sem colunas nenhumas.
 - Os cartões da entrada **toleram uma API em baixo**: cada tipo é lido por si, e o que falha
   aparece com o aviso em vez de levar a página atrás. A base dos telemóveis é outra e pode
   estar em baixo sozinha.
