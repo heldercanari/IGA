@@ -16,9 +16,10 @@ se descobre a ler o código, e o que já correu mal antes.
 código de erro `IGA_SEM_ACESSO`. Nos ecrãs aparece o nome por extenso — "Inventário e Gestão
 de Ativos" — com a sigla ao lado; só o separador do browser leva `· IGA`, que é o que lá cabe.
 
-**Os nomes por tipo de equipamento não levam o prefixo**: `radios`, `telemoveis`, as páginas,
-as tabelas (`radios_*`, `telemoveis_*`) e as bases pertencem ao tipo, não à aplicação. Um tipo
-novo entra com o seu nome, não com `iga_qualquer_coisa`.
+**Os nomes por tipo de equipamento não levam o prefixo**: `radios`, `telemoveis`,
+`impressoras`, as páginas, as tabelas (`radios_*`, `telemoveis_*`, `impressoras_*`) e as bases
+pertencem ao tipo, não à aplicação. Um tipo novo entra com o seu nome, não com
+`iga_qualquer_coisa`.
 
 ## O que não se altera aqui
 
@@ -42,10 +43,13 @@ novo entra com o seu nome, não com `iga_qualquer_coisa`.
 - ⚠️ **Sem `#` nas passwords do `.env`.** O `dotenv` corta um valor sem aspas no primeiro
   cardinal, e o que chega ao driver é só o princípio — o erro que se vê é "Login failed".
 
-## Duas bases de dados
+## Duas bases de dados, três tipos
 
 - **Os rádios estão na `RadiosDev` e os telemóveis na `TelemoveisDev`.** Duas pools: o `db.js`
   (cópia da intranet) e o `db-telemoveis.js`, que só existe por causa disto.
+- **As impressoras ficam na base do `db.js` — a mesma dos rádios — e não têm pool própria.**
+  Base própria é a excepção que os telemóveis são, não a regra: um `db-impressoras.js` era uma
+  terceira ligação para chegar ao mesmo sítio. Um tipo novo só leva pool quando levar base.
 - ⚠️ **Nunca qualifiques a base no SQL.** Nada de `TelemoveisDev.dbo.telemoveis` nem de nomes
   de três partes: a separação vive na ligação, não nas consultas. **Na intranet os módulos
   partilham a mesma base**, e é assim que juntar tudo é apagar o `DB_DATABASE_TELEMOVEIS` do
@@ -142,6 +146,42 @@ radios.xlsx`, a folha `TEI` antiga) — essas ficaram só no histórico do git.
   índice único no número faz a segunda cair em cima da primeira, e o resumo conta-a em
   `duplicadas_na_folha` em vez de a esconder num "actualizado".
 
+## As impressoras não seguem o molde — e é de propósito
+
+O terceiro tipo é o primeiro que **não se entrega a ninguém**: uma impressora está instalada num
+serviço. A migração `003` tem o raciocínio por extenso; o que aqui interessa é não desfazer as
+decisões por parecerem esquecimentos.
+
+- **Não há `impressoras_atribuicoes`, `_avarias` nem `_abates`, e não há coluna `estado`.** Não
+  faltam: sem avarias nem abates o estado era 'disponivel' em todas as linhas para sempre. Por
+  isso também **não existe `recalcularEstado()` no `impressoras.js`** — não procures o que ele
+  não tem. Se as avarias vierem a ser registadas, é migração nova (`004_…`), com a coluna e o
+  recálculo a acompanhar.
+- **A localização é uma coluna, não um histórico.** Guarda-se onde a impressora ESTÁ, não por
+  onde andou — o ficheiro de origem também só tem "Localização Atual", uma célula por máquina.
+  A ficha di-lo em voz alta, para ninguém procurar um histórico que não existe. Se for preciso
+  saber quando mudou de sítio, entra uma `impressoras_localizacoes` no molde do `_atribuicoes`.
+- ⚠️ **O `PUT /impressoras/:id` grava só os campos que vierem no corpo** — ao contrário do dos
+  telemóveis, que grava a lista toda e apaga o que não vier. É o que faz "mudar de serviço",
+  um pedido com um campo só, não apagar o IP, a série e o modelo. **Não uniformizes isto com o
+  outro ficheiro**: o ecrã das impressoras conta com esta regra.
+- **Os IP guardam-se sem os zeros à esquerda** (`10.22.129.049` → `10.22.129.49`). A folha
+  escreve-os das duas maneiras; a base guarda uma só, a canónica — a que o Windows, o `ping` e
+  o painel da impressora mostram. É `normalizarIP()`, e existe **em duas cópias**: no
+  `impressoras.js` (o que entra pelo ecrã) e no `scripts/importar_impressoras.js` (o que vem da
+  folha). Se mexeres numa, mexe na outra — são cinco linhas, e os importadores deste
+  repositório não importam dos routers (o dos telemóveis já repete o `texto()` pela mesma
+  razão). ⚠️ **Só toca em IPv4 bem formados**; qualquer outra coisa no campo passa intacta.
+- O IP **não tem índice único**, e não é por causa das escritas: é porque não é a identidade da
+  máquina — muda quando ela muda de sala. Únicos são o `num_serie` e o `host_name`, os dois
+  filtrados.
+- ⚠️ **Uma linha da origem não bate certo consigo própria.** Em quinze das dezasseis o host
+  acaba no último octeto do IP (`10.22.129.246` → `CML182_KO_246`); na AADIVPOL o IP diz `.60`
+  e o host diz `_050`. Os dois entraram como estão. A verificação vive em dois sítios de
+  propósito — `divergeDoIP()` no importador (avisa no resumo) e `hostDivergeDoIP()` no ecrã
+  (calcula a cada desenho, para o aviso desaparecer sozinho quando alguém corrigir). **Não a
+  gravaste numa coluna, não a graves agora**: era um valor a envelhecer.
+
 ## Credenciais dos telemóveis
 
 - ⚠️ **Nenhuma consulta de listagem ou de detalhe pode devolver `pin`, `puk`, `utilizador` ou
@@ -166,11 +206,12 @@ radios.xlsx`, a folha `TEI` antiga) — essas ficaram só no histórico do git.
 
 ## Uma página por tipo de equipamento
 
-- **`public/radios.html` e `public/telemoveis.html` são independentes, e é deliberado.** Não
-  há motor partilhado entre elas, nem separadores dentro de uma página: cada tipo tem o seu
-  ecrã, e o próximo equipamento será outra página. Foi decidido assim com o custo à vista —
-  **não "arrumes" isto para um ficheiro comum** por parecer duplicação; é uma escolha, não um
-  descuido. Se algum dia for para mudar, é conversa a ter, não uma refactorização de passagem.
+- **`public/radios.html`, `public/telemoveis.html` e `public/impressoras.html` são
+  independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
+  de uma página: cada tipo tem o seu ecrã, e o próximo equipamento será outra página. Foi
+  decidido assim com o custo à vista — **não "arrumes" isto para um ficheiro comum** por
+  parecer duplicação; é uma escolha, não um descuido. Se algum dia for para mudar, é conversa
+  a ter, não uma refactorização de passagem.
 - **`public/iga.html` é a porta de entrada** — um cartão por equipamento, com as contagens, e
   é para lá que a raiz reencaminha. Não tem lógica de inventário nenhuma: só lê os
   `/estatisticas` de cada tipo e abre a página respectiva. O cabeçalho das outras páginas traz
@@ -180,6 +221,11 @@ radios.xlsx`, a folha `TEI` antiga) — essas ficaram só no histórico do git.
   A navegação entre tipos é sempre pela entrada: cabeçalho → `iga.html` → outro cartão. Por
   isso **a lista de tipos vive num só sítio**, o `TIPOS` do `iga.html`; não a espalhes pelas
   páginas com um `<nav>` de atalhos — foi tirado de propósito.
+- **Cada tipo traz as suas `contagens` no `TIPOS`**, que são os quatro números do rodapé do
+  cartão. Os que se entregam a pessoas partilham a `CONTAGENS_PARQUE` (entregues, disponíveis,
+  avariados, abatidos); as impressoras contam o sítio (instaladas, serviços, modelos, sem
+  local). Não voltes a fixar os quatro rótulos no `cartao()` — era o que fazia o cartão das
+  impressoras dizer "abatidos —" para sempre.
 - Os cartões da entrada **toleram uma API em baixo**: cada tipo é lido por si, e o que falha
   aparece com o aviso em vez de levar a página atrás. A base dos telemóveis é outra e pode
   estar em baixo sozinha.

@@ -9,15 +9,18 @@
  *
  * Este ficheiro não tem rotas próprias: abre o `/permissoes`, aplica o gate de
  * VER e monta um router por tipo de equipamento. **É aqui que um tipo novo
- * entra** — uma linha, a seguir às outras duas:
+ * entra** — uma linha, a seguir às outras:
  *
  *   /api/iga/radios      → ./radios.js       (base `RadiosDev`)
  *   /api/iga/telemoveis  → ./telemoveis.js   (base `TelemoveisDev`)
+ *   /api/iga/impressoras → ./impressoras.js  (base do módulo — a mesma dos rádios)
  *
- * Cada tipo tem o seu ficheiro e a sua base; o que partilham são as permissões
- * (grupos `IGA`, `IGA-Consulta` e `IGA-Admin`) e os ajudantes de
- * `comum.js`. Não há rota que cruze dois tipos, e é de propósito: as bases são
- * separadas e não há JOIN possível entre elas.
+ * Cada tipo tem o seu ficheiro; **base própria só quando é preciso**. Os
+ * telemóveis têm-na por decisão de desenvolvimento (ver a 002); as impressoras
+ * partilham a dos rádios e usam a pool do `db.js`. O que todos partilham são as
+ * permissões (grupos `IGA`, `IGA-Consulta` e `IGA-Admin`) e os ajudantes de
+ * `comum.js`. Não há rota que cruze dois tipos, e é de propósito: onde as bases
+ * são separadas não há JOIN possível entre elas.
  */
 
 const express = require('express');
@@ -37,5 +40,6 @@ router.use(exigirAcesso);
 // ─── Um router por tipo de equipamento ─────────────────────
 router.use('/radios', require('./radios'));
 router.use('/telemoveis', require('./telemoveis'));
+router.use('/impressoras', require('./impressoras'));
 
 module.exports = router;

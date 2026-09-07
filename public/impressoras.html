@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impressoras · IGA</title>
+    <link rel="icon" type="image/png" href="/iga/favicon.png">
+    <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
+         aplica quando corre. Adiado para depois do parse, o browser chega a pintar
+         a página em cru. O ficheiro é local, não vem de CDN nenhum. O lucide fica
+         adiado — é só ícones, e o script de baixo já espera por ele. -->
+    <script src="/iga/tailwind.global.js"></script>
+    <script src="/iga/lucide.min.js" defer></script>
+    <style>
+        /* `hidden` é uma classe do Tailwind, portanto só existe depois de ele
+           compilar. Declará-la aqui garante que os modais e o toast não aparecem
+           empilhados na fracção de segundo anterior. */
+        .hidden { display: none; }
+
+        body, input, select, textarea, button {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        thead.pegajoso th { position: sticky; top: 0; z-index: 10; }
+        tbody tr { line-height: 1.3; }
+        .accao {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 6px; border: none;
+            background: transparent; cursor: pointer; flex-shrink: 0;
+            transition: background-color .15s, transform .1s;
+        }
+        .accao:hover { transform: scale(1.12); }
+        .accao:disabled { opacity: .25; cursor: not-allowed; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded">Saltar para o conteúdo</a>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite" class="fixed top-5 right-5 z-50 hidden items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white" style="min-width:260px">
+    <span id="toastIcone" aria-hidden="true"></span>
+    <span id="toastMsg"></span>
+</div>
+
+<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <img src="/iga/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+    </div>
+</div>
+
+<div id="app" class="max-w-[1400px] mx-auto p-6">
+
+    <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <a href="/iga.html" class="flex items-center gap-4 group" title="Voltar ao início">
+            <img src="/iga/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900 group-hover:text-blue-700 transition">Inventário e Gestão de Ativos
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-400">IGA</span>
+                </h1>
+                <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
+            </div>
+        </a>
+        <div class="text-right flex flex-col items-end gap-1">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                Utilizador: <span id="nomeUtilizador">a carregar…</span>
+            </span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+        </div>
+    </header>
+
+    <!-- Cartões de contagem.
+         Contam o sítio, não a pessoa: uma impressora não é entregue a ninguém,
+         está instalada num serviço. "Sem local" é o único destes números que é
+         trabalho por fazer, e é por isso que filtra ao carregar. -->
+    <section aria-label="Resumo das impressoras" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+        <button type="button" data-local="" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Impressoras</p>
+            <p id="kpiTotal" class="text-2xl font-extrabold text-slate-900">—</p>
+        </button>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Instaladas</p>
+            <p id="kpiInstaladas" class="text-2xl font-extrabold text-blue-700">—</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">com serviço registado</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Serviços</p>
+            <p id="kpiLocais" class="text-2xl font-extrabold text-emerald-700">—</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">sítios diferentes</p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Modelos</p>
+            <p id="kpiModelos" class="text-2xl font-extrabold text-slate-800">—</p>
+        </div>
+        <button type="button" data-local="--sem--" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-amber-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Sem local</p>
+            <p id="kpiSemLocal" class="text-2xl font-extrabold text-amber-700">—</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">por atribuir a um serviço</p>
+        </button>
+    </section>
+
+    <main id="conteudo">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+            <div class="flex-1 min-w-[240px]">
+                <label for="procura" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
+                <input id="procura" type="search" placeholder="Série, modelo, serviço, IP ou host name…"
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="filtroLocal" class="block text-xs font-semibold text-slate-600 mb-1">Serviço</label>
+                <select id="filtroLocal" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[280px]">
+                    <option value="">Todos</option>
+                    <option value="--sem--">— sem local —</option>
+                </select>
+            </div>
+            <button id="btnNova" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+                + Nova impressora
+            </button>
+            <button id="btnExportar" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                Exportar CSV
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                        <tr>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Serviço</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Equipamento</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nº série</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">IP</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Host name</th>
+                            <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Acções</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+            <p id="rodape" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+        </div>
+    </main>
+</div>
+
+<!-- ─── Painel de detalhe ─────────────────────────────────── -->
+<div id="painel" class="hidden fixed inset-0 z-40 flex justify-end">
+    <div class="absolute inset-0 bg-slate-900/40" data-fechar></div>
+    <aside role="dialog" aria-modal="true" aria-labelledby="painelTitulo"
+           class="relative bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl">
+        <header class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-start justify-between gap-4">
+            <div>
+                <h2 id="painelTitulo" class="text-lg font-extrabold text-slate-900">Impressora</h2>
+                <p id="painelSubtitulo" class="text-xs text-slate-500"></p>
+            </div>
+            <button data-fechar class="accao text-slate-500 hover:bg-slate-100" aria-label="Fechar">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </header>
+        <div id="painelCorpo" class="p-6 space-y-6"></div>
+    </aside>
+</div>
+
+<!-- ─── Modal de formulário ───────────────────────────────── -->
+<div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-slate-900/50" data-fechar-modal></div>
+    <div role="dialog" aria-modal="true" aria-labelledby="modalTitulo"
+         class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <header class="px-6 py-4 border-b border-slate-200">
+            <h2 id="modalTitulo" class="text-base font-extrabold text-slate-900"></h2>
+            <p id="modalAjuda" class="text-xs text-slate-500 mt-0.5"></p>
+        </header>
+        <form id="modalForm" class="p-6 space-y-4"></form>
+        <footer class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-2xl">
+            <button type="button" data-fechar-modal class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancelar</button>
+            <button type="submit" form="modalForm" id="modalGravar" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Gravar</button>
+        </footer>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+/**
+ * Impressoras — o ecrã do terceiro tipo de activo.
+ *
+ * É o mais simples dos três, e é de propósito: aqui não há entregas, avarias nem
+ * abates. Uma impressora está instalada num serviço, e este ecrã existe para
+ * saber onde está e mudá-la de sítio quando ela muda. Ver a migração 003.
+ *
+ * Como as outras páginas do módulo, esta não tem navegação para os outros tipos:
+ * volta-se pela entrada, no logótipo.
+ */
+
+const API = '/api/iga/impressoras';   // as rotas deste ecrã
+const API_MODULO = '/api/iga';        // /permissoes é do módulo, não do tipo
+
+const estado = {
+  permissoes: null,
+  impressoras: [],
+  locais: [],
+  filtros: { q: '', local: '' },
+  aberto: null,
+};
+
+// ─── Utilitários ───────────────────────────────────────────
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/**
+ * Datas em dd/mm/aaaa, lidas em UTC — mesma razão das outras páginas: o SQL
+ * Server devolve DATE como meia-noite UTC e ler as componentes locais fazia a
+ * data recuar um dia a oeste de Lisboa.
+ */
+function dataPt(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return esc(v);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+let toastTimer = null;
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  const cor = tipo === 'erro' ? 'bg-red-600' : tipo === 'aviso' ? 'bg-amber-600' : 'bg-emerald-600';
+  el.className = `fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white ${cor}`;
+  document.getElementById('toastIcone').innerHTML =
+    `<i data-lucide="${tipo === 'erro' ? 'alert-circle' : tipo === 'aviso' ? 'alert-triangle' : 'check-circle'}" class="w-5 h-5"></i>`;
+  document.getElementById('toastMsg').textContent = msg;
+  if (window.lucide) lucide.createIcons();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+async function pedir(caminho, opcoes, base) {
+  const r = await fetch((base || API) + caminho, Object.assign({ headers: { 'Accept': 'application/json' } }, opcoes));
+  let corpo = null;
+  try { corpo = await r.json(); } catch (e) { /* resposta sem JSON */ }
+  if (!r.ok) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+  return corpo;
+}
+
+function enviar(caminho, dados, metodo) {
+  return pedir(caminho, {
+    method: metodo || 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(dados || {}),
+  });
+}
+
+function linhaCampo(rotulo, valor) {
+  return `<div>
+    <dt class="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">${esc(rotulo)}</dt>
+    <dd class="text-sm text-slate-800">${valor || '<span class="text-slate-300">—</span>'}</dd>
+  </div>`;
+}
+
+/**
+ * O host name acaba no último octeto do IP?
+ *
+ * `10.22.129.246` ↔ `CML182_KO_246` bate certo; `10.22.129.60` ↔ `CML182_KO_050`
+ * não. A conta é a mesma do importador, e é feita aqui — no ecrã, a cada
+ * desenho — em vez de gravada numa coluna: assim que alguém corrigir o IP ou o
+ * host, o aviso desaparece sozinho.
+ *
+ * A comparação é numérica de propósito: o IP está guardado como vem da folha,
+ * onde uns têm zeros à esquerda ("129.049") e outros não. `_049` e `.49` são o
+ * mesmo número, e não é isso que aqui se procura.
+ */
+function hostDivergeDoIP(ip, host) {
+  if (!ip || !host) return false;
+  const octeto = /(\d+)\s*$/.exec(String(ip).trim());
+  const sufixo = /(\d+)\s*$/.exec(String(host).trim());
+  if (!octeto || !sufixo) return false;
+  return Number(octeto[1]) !== Number(sufixo[1]);
+}
+
+const AVISO_HOST = 'O host name não acaba no último octeto do IP. Um dos dois valores está errado — confirmar no serviço.';
+
+// ─── Listagem ──────────────────────────────────────────────
+
+async function carregar() {
+  const p = new URLSearchParams();
+  if (estado.filtros.q) p.set('q', estado.filtros.q);
+  if (estado.filtros.local) p.set('local', estado.filtros.local);
+  estado.impressoras = await pedir('/?' + p.toString());
+  desenhar();
+}
+
+function desenhar() {
+  const podeEditar = estado.permissoes && estado.permissoes.canEdit;
+  const podeAdmin = estado.permissoes && estado.permissoes.canAdmin;
+  const corpo = document.getElementById('tabela');
+
+  if (!estado.impressoras.length) {
+    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">
+      Nenhuma impressora encontrada com estes filtros.</td></tr>`;
+    document.getElementById('rodape').textContent = '';
+    return;
+  }
+
+  corpo.innerHTML = estado.impressoras.map(i => {
+    const diverge = hostDivergeDoIP(i.ip, i.host_name);
+    return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 font-bold text-slate-900">${i.localizacao
+        ? esc(i.localizacao)
+        : '<span class="text-amber-700 font-semibold">sem local</span>'}</td>
+      <td class="px-3 py-2">
+        <div class="text-slate-800">${esc(i.modelo || '—')}</div>
+        ${i.marca ? `<div class="text-[11px] text-slate-400">${esc(i.marca)}</div>` : ''}
+      </td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${i.num_serie ? esc(i.num_serie) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${i.ip ? esc(i.ip) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">
+        ${i.host_name ? esc(i.host_name) : '<span class="text-slate-300">—</span>'}
+        ${diverge ? `<span class="ml-1 text-amber-600" title="${esc(AVISO_HOST)}" aria-label="${esc(AVISO_HOST)}">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline-block align-text-bottom"></i></span>` : ''}
+      </td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">
+        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${i.id}" title="Ver ficha" aria-label="Ver a ficha da impressora ${esc(i.num_serie || i.host_name || '')}">
+          <i data-lucide="eye" class="w-4 h-4"></i></button>
+        <button class="accao text-blue-600 hover:bg-blue-50" data-mudar="${i.id}" title="Mudar de serviço" ${podeEditar ? '' : 'disabled'}>
+          <i data-lucide="map-pin" class="w-4 h-4"></i></button>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-editar="${i.id}" title="Editar" ${podeEditar ? '' : 'disabled'}>
+          <i data-lucide="pencil" class="w-4 h-4"></i></button>
+        <button class="accao text-red-600 hover:bg-red-50" data-apagar="${i.id}" title="Apagar" ${podeAdmin ? '' : 'disabled'}>
+          <i data-lucide="trash-2" class="w-4 h-4"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rodape').textContent =
+    `${estado.impressoras.length} ${estado.impressoras.length === 1 ? 'impressora' : 'impressoras'}` +
+    (estado.filtros.q || estado.filtros.local ? ' (filtrado)' : '');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function carregarEstatisticas() {
+  const e = await pedir('/estatisticas');
+  document.getElementById('kpiTotal').textContent = e.total;
+  document.getElementById('kpiInstaladas').textContent = e.com_local;
+  document.getElementById('kpiLocais').textContent = e.locais;
+  document.getElementById('kpiModelos').textContent = e.modelos;
+  document.getElementById('kpiSemLocal').textContent = e.sem_local;
+}
+
+/**
+ * A lista de serviços enche o filtro e o autocompletar do formulário.
+ *
+ * Vem da própria coluna, não de uma tabela de referência: escrever "DT -
+ * Radares" onde as outras dizem "DT - RADARES" cria um sítio novo, e o
+ * autocompletar é o que evita isso sem impor uma lista fechada.
+ */
+async function carregarLocais() {
+  estado.locais = await pedir('/locais');
+  const filtro = document.getElementById('filtroLocal');
+  const escolhido = filtro.value;
+  filtro.innerHTML = '<option value="">Todos</option><option value="--sem--">— sem local —</option>' +
+    estado.locais.map(l => `<option value="${esc(l.localizacao)}">${esc(l.localizacao)} (${l.total})</option>`).join('');
+  filtro.value = escolhido;
+}
+
+function encherListaLocais() {
+  const lista = document.getElementById('listaLocais');
+  if (lista) lista.innerHTML = estado.locais.map(l => `<option value="${esc(l.localizacao)}"></option>`).join('');
+}
+
+// ─── Detalhe ───────────────────────────────────────────────
+
+async function abrirDetalhe(id) {
+  const i = await pedir('/' + id);
+  estado.aberto = i;
+
+  document.getElementById('painelTitulo').textContent =
+    i.localizacao ? `Impressora · ${i.localizacao}` : 'Impressora sem local';
+  document.getElementById('painelSubtitulo').textContent =
+    `${i.marca || ''} ${i.modelo || ''}`.trim() || '—';
+
+  const diverge = hostDivergeDoIP(i.ip, i.host_name);
+
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex items-center gap-2 mb-3">
+        <span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${i.localizacao
+          ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}">${i.localizacao ? 'Instalada' : 'Sem local'}</span>
+        ${estado.permissoes.canEdit
+          ? '<button id="btnMudar" class="ml-auto text-xs font-semibold text-blue-600 hover:underline">Mudar de serviço</button>'
+          : ''}
+      </div>
+      <dl class="grid grid-cols-2 gap-3">
+        ${linhaCampo('Serviço', esc(i.localizacao))}
+        ${linhaCampo('Marca / modelo', `${esc(i.marca || '')} ${esc(i.modelo || '')}`.trim())}
+        ${linhaCampo('Nº de série', i.num_serie ? `<span class="font-mono text-xs">${esc(i.num_serie)}</span>` : '')}
+        ${linhaCampo('IP', i.ip ? `<span class="font-mono text-xs">${esc(i.ip)}</span>` : '')}
+        ${linhaCampo('Host name', i.host_name ? `<span class="font-mono text-xs">${esc(i.host_name)}</span>` : '')}
+        ${linhaCampo('Actualizada', dataPt(i.atualizado_em))}
+      </dl>
+      ${i.obs ? `<p class="mt-3 text-sm bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3">${esc(i.obs)}</p>` : ''}
+      ${diverge ? `<p class="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+        <strong>Host name e IP não batem certo.</strong> Nas outras máquinas o host acaba no último
+        octeto do IP; nesta o IP diz <span class="font-mono">${esc(i.ip)}</span> e o host diz
+        <span class="font-mono">${esc(i.host_name)}</span>. Os dois vieram assim do ficheiro de
+        origem — confirmar no serviço qual está certo antes de corrigir.</p>` : ''}
+    </section>
+
+    <section class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Histórico de localizações</h3>
+      <p class="text-sm text-slate-500">Não há: guarda-se onde a impressora está, não por onde andou.
+        O que se sabe é a última alteração, em ${dataPt(i.atualizado_em)}.</p>
+    </section>
+
+    ${estado.permissoes.canEdit
+      ? '<button id="btnEditar" class="text-xs font-semibold text-blue-600 hover:underline">Editar a ficha</button>'
+      : ''}`;
+
+  document.getElementById('painel').classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+function fecharPainel() {
+  document.getElementById('painel').classList.add('hidden');
+  estado.aberto = null;
+}
+
+// ─── Modais ────────────────────────────────────────────────
+
+let submeterModal = null;
+
+function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalAjuda').textContent = ajuda || '';
+  document.getElementById('modalGravar').textContent = textoGravar || 'Gravar';
+  document.getElementById('modalForm').innerHTML = campos.map(c => {
+    const base = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+    const controlo = c.tipo === 'textarea'
+      ? `<textarea id="c_${c.nome}" name="${c.nome}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`
+      : `<input id="c_${c.nome}" name="${c.nome}" type="${c.tipo || 'text'}" value="${esc(c.valor || '')}"
+           ${c.lista ? `list="${c.lista}"` : ''} ${c.obrigatorio ? 'required' : ''}
+           placeholder="${esc(c.dica || '')}" class="${base}">`;
+    return `<div>
+      <label for="c_${c.nome}" class="block text-xs font-semibold text-slate-600 mb-1">${esc(c.rotulo)}</label>
+      ${controlo}
+      ${c.nota ? `<p class="text-[11px] text-slate-400 mt-1">${esc(c.nota)}</p>` : ''}
+    </div>`;
+  }).join('') + '<datalist id="listaLocais"></datalist>';
+
+  encherListaLocais();
+  submeterModal = gravar;
+  document.getElementById('modal').classList.remove('hidden');
+  const primeiro = document.querySelector('#modalForm input, #modalForm textarea');
+  if (primeiro) primeiro.focus();
+}
+
+function fecharModal() {
+  document.getElementById('modal').classList.add('hidden');
+  submeterModal = null;
+}
+
+function dadosDoModal() {
+  const dados = {};
+  new FormData(document.getElementById('modalForm')).forEach((v, k) => { dados[k] = String(v).trim(); });
+  return dados;
+}
+
+/** Recarrega o que está à vista depois de uma alteração. */
+async function refrescar(idDetalhe) {
+  await Promise.all([carregar(), carregarEstatisticas(), carregarLocais()]);
+  if (idDetalhe) await abrirDetalhe(idDetalhe);
+}
+
+function maquina(id) {
+  return estado.impressoras.find(i => i.id === id) || estado.aberto || {};
+}
+
+/**
+ * Mudar de serviço — a acção do dia-a-dia deste ecrã.
+ *
+ * Manda só o campo `localizacao`. O PUT das impressoras grava apenas o que vem
+ * no corpo (ao contrário do dos telemóveis), portanto isto não apaga o IP, a
+ * série nem o modelo.
+ */
+function modalMudar(id) {
+  const i = maquina(id);
+  abrirModal({
+    titulo: 'Mudar de serviço',
+    ajuda: i.localizacao ? `Está em ${i.localizacao}.` : 'Esta impressora ainda não tem serviço registado.',
+    campos: [
+      { nome: 'localizacao', rotulo: 'Serviço', tipo: 'text', valor: i.localizacao, lista: 'listaLocais',
+        obrigatorio: true, dica: 'DT - RADARES',
+        nota: 'Escolhe um da lista quando for um sítio que já existe — escrever de outra maneira cria um serviço novo.' },
+    ],
+    textoGravar: 'Mudar',
+    gravar: async d => {
+      await enviar('/' + id, { localizacao: d.localizacao }, 'PUT');
+      toast('Impressora mudada de serviço.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+}
+
+function modalEquipamento(i) {
+  const nova = !i;
+  i = i || {};
+  abrirModal({
+    titulo: nova ? 'Nova impressora' : 'Editar a impressora',
+    ajuda: nova ? 'Basta o número de série ou o host name.' : '',
+    campos: [
+      { nome: 'localizacao', rotulo: 'Serviço', tipo: 'text', valor: i.localizacao, lista: 'listaLocais', dica: 'DT - RADARES' },
+      { nome: 'marca', rotulo: 'Marca', tipo: 'text', valor: i.marca || (nova ? 'Konica Minolta' : '') },
+      { nome: 'modelo', rotulo: 'Modelo', tipo: 'text', valor: i.modelo, dica: 'bizhub 4700i' },
+      { nome: 'num_serie', rotulo: 'Nº de série', tipo: 'text', valor: i.num_serie, dica: 'ACTA021002692' },
+      { nome: 'ip', rotulo: 'IP', tipo: 'text', valor: i.ip, dica: '10.22.129.246',
+        nota: 'Guarda-se como o escreveres — o parque tem endereços com e sem zeros à esquerda.' },
+      { nome: 'host_name', rotulo: 'Host name', tipo: 'text', valor: i.host_name, dica: 'CML182_KO_246' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: i.obs },
+    ],
+    gravar: async d => {
+      if (nova) {
+        const criada = await enviar('/', d);
+        toast('Impressora criada.');
+        await refrescar();
+        await abrirDetalhe(criada.id);
+      } else {
+        await enviar('/' + i.id, d, 'PUT');
+        toast('Alterações gravadas.');
+        await refrescar(estado.aberto ? i.id : null);
+      }
+    },
+  });
+}
+
+// ─── Exportação ────────────────────────────────────────────
+
+/**
+ * CSV com ponto e vírgula e BOM: é o que o Excel em português abre sem pedir
+ * nada. Com vírgula, o Excel PT junta tudo numa coluna só.
+ *
+ * As colunas saem pela mesma ordem do ficheiro de origem, para o exportado poder
+ * substituir o `impressoras Konica.xlsx` sem ninguém ter de reordenar nada.
+ */
+function exportarCSV() {
+  const colunas = ['marca', 'modelo', 'num_serie', 'localizacao', 'ip', 'host_name', 'obs'];
+  const celula = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v).replace(/"/g, '""');
+    return /[";\n]/.test(s) ? `"${s}"` : s;
+  };
+  const linhas = [colunas.join(';')].concat(estado.impressoras.map(i =>
+    colunas.map(c => celula(i[c])).join(';')));
+  const url = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `impressoras_${hojeISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Ligações ──────────────────────────────────────────────
+
+let temporizadorProcura = null;
+function procuraAdiada(fn) {
+  clearTimeout(temporizadorProcura);
+  temporizadorProcura = setTimeout(fn, 250);
+}
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('[data-detalhe],[data-mudar],[data-editar],[data-apagar],[data-local],[data-fechar],[data-fechar-modal],#btnEditar,#btnMudar,#btnNova,#btnExportar');
+  if (!alvo) return;
+  const d = alvo.dataset;
+  try {
+    if (alvo.matches('[data-fechar]')) return fecharPainel();
+    if (alvo.matches('[data-fechar-modal]')) return fecharModal();
+    if (alvo.id === 'btnExportar') return exportarCSV();
+    if (alvo.id === 'btnNova') return modalEquipamento(null);
+    if (alvo.id === 'btnEditar') return modalEquipamento(estado.aberto);
+    if (alvo.id === 'btnMudar') return modalMudar(estado.aberto.id);
+    if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
+    if (d.mudar) return modalMudar(Number(d.mudar));
+    if (d.editar) return modalEquipamento(maquina(Number(d.editar)));
+    if (d.apagar) {
+      const i = maquina(Number(d.apagar));
+      if (!confirm(`Apagar a impressora ${i.num_serie || i.host_name || ''}? A ficha desaparece — não é um abate.`)) return;
+      await pedir('/' + d.apagar, { method: 'DELETE' });
+      toast('Impressora apagada.');
+      if (estado.aberto && estado.aberto.id === Number(d.apagar)) fecharPainel();
+      return refrescar();
+    }
+    if (d.local !== undefined && alvo.classList.contains('cartao')) {
+      estado.filtros.local = d.local;
+      document.getElementById('filtroLocal').value = d.local;
+      return carregar();
+    }
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+});
+
+document.getElementById('modalForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!submeterModal) return;
+  const botao = document.getElementById('modalGravar');
+  botao.disabled = true;
+  try {
+    await submeterModal(dadosDoModal());
+    fecharModal();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+document.getElementById('procura').addEventListener('input', ev => {
+  estado.filtros.q = ev.target.value.trim();
+  procuraAdiada(() => carregar().catch(e => toast(e.message, 'erro')));
+});
+document.getElementById('filtroLocal').addEventListener('change', ev => {
+  estado.filtros.local = ev.target.value;
+  carregar().catch(e => toast(e.message, 'erro'));
+});
+
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (!document.getElementById('modal').classList.contains('hidden')) return fecharModal();
+  if (!document.getElementById('painel').classList.contains('hidden')) return fecharPainel();
+});
+
+// ─── Arranque ──────────────────────────────────────────────
+
+function mostrarErro(titulo, detalhe) {
+  document.getElementById('erroTitulo').textContent = titulo;
+  document.getElementById('erroDetalhe').textContent = detalhe || '';
+  document.getElementById('ecraErro').classList.remove('hidden');
+}
+
+async function arrancar() {
+  try {
+    estado.permissoes = await pedir('/permissoes', null, API_MODULO);
+  } catch (err) {
+    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+  }
+  if (!estado.permissoes.canView) {
+    return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
+      'Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
+  }
+
+  document.getElementById('nomeUtilizador').textContent =
+    estado.permissoes.nome || estado.permissoes.username || '—';
+  document.getElementById('etiquetaAcesso').textContent =
+    estado.permissoes.canAdmin ? 'Administração' : estado.permissoes.canEdit ? 'Escrita' : 'Só consulta';
+  if (estado.permissoes.canEdit) document.getElementById('btnNova').classList.remove('hidden');
+
+  try {
+    await Promise.all([carregarEstatisticas(), carregarLocais(), carregar()]);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+arrancar();
+</script>
+</body>
+</html>

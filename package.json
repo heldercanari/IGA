@@ -9,7 +9,8 @@
   "scripts": {
     "harness": "node _harness-iga.js",
     "importar-radios": "node scripts/importar_radios.js",
-    "importar-telemoveis": "node scripts/importar_telemoveis.js"
+    "importar-telemoveis": "node scripts/importar_telemoveis.js",
+    "importar-impressoras": "node scripts/importar_impressoras.js"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

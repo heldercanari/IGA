@@ -54,7 +54,7 @@
              páginas de equipamento não têm navegação entre tipos, e toda a
              passagem de um para outro é por aqui. Um equipamento novo entra no
              `TIPOS` abaixo e mais nada. -->
-        <div id="cartoes" class="grid gap-4 md:grid-cols-2"></div>
+        <div id="cartoes" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"></div>
 
         <p id="rodape" class="text-xs text-slate-400 mt-8"></p>
     </main>
@@ -72,7 +72,20 @@ const API_MODULO = '/api/iga';
  * páginas de equipamento não têm navegação entre tipos (cada uma é dedicada ao
  * seu), portanto um tipo novo entra aqui com o seu endpoint e a sua página, e
  * mais nada.
+ *
+ * `contagens` são os quatro números do rodapé do cartão, e cada tipo traz os
+ * seus: `campo` é a chave que vem do `/estatisticas` desse tipo. Os rádios e os
+ * telemóveis contam o mesmo — quem tem o quê, o que está em baixo —, mas as
+ * impressoras não são entregues a ninguém e contam outra coisa. Sem esta lista,
+ * o cartão das impressoras mostrava "entregues —" e "abatidos —" para sempre.
  */
+const CONTAGENS_PARQUE = [
+  { rotulo: 'entregues', campo: 'atribuidos', cor: 'text-blue-700' },
+  { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700' },
+  { rotulo: 'avariados', campo: 'avariados', cor: 'text-amber-700' },
+  { rotulo: 'abatidos', campo: 'abatidos', cor: 'text-slate-600' },
+];
+
 const TIPOS = [
   {
     chave: 'radios',
@@ -81,6 +94,7 @@ const TIPOS = [
     icone: 'radio-tower',
     pagina: '/radios.html',
     api: '/radios',
+    contagens: CONTAGENS_PARQUE,
   },
   {
     chave: 'telemoveis',
@@ -89,6 +103,23 @@ const TIPOS = [
     icone: 'smartphone',
     pagina: '/telemoveis.html',
     api: '/telemoveis',
+    contagens: CONTAGENS_PARQUE,
+  },
+  {
+    chave: 'impressoras',
+    nome: 'Impressoras',
+    descricao: 'Konica Minolta · multifunções',
+    icone: 'printer',
+    pagina: '/impressoras.html',
+    api: '/impressoras',
+    // Aqui conta-se o sítio, não a pessoa: as impressoras estão instaladas em
+    // serviços e o módulo delas existe para saber onde cada uma está.
+    contagens: [
+      { rotulo: 'instaladas', campo: 'com_local', cor: 'text-blue-700' },
+      { rotulo: 'serviços', campo: 'locais', cor: 'text-emerald-700' },
+      { rotulo: 'modelos', campo: 'modelos', cor: 'text-slate-800' },
+      { rotulo: 'sem local', campo: 'sem_local', cor: 'text-amber-700' },
+    ],
   },
 ];
 
@@ -141,10 +172,7 @@ function cartao(tipo, e, aviso) {
     </div>
 
     <div class="grid grid-cols-4 gap-2 pt-4 border-t border-slate-100">
-      ${contagem('entregues', e && e.atribuidos, 'text-blue-700')}
-      ${contagem('disponíveis', e && e.disponiveis, 'text-emerald-700')}
-      ${contagem('avariados', e && e.avariados, 'text-amber-700')}
-      ${contagem('abatidos', e && e.abatidos, 'text-slate-600')}
+      ${tipo.contagens.map(c => contagem(c.rotulo, e && e[c.campo], c.cor)).join('')}
     </div>
 
     ${aviso ? `<p class="mt-4 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">${esc(aviso)}</p>` : ''}
