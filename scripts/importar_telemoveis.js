@@ -10,6 +10,17 @@
  * Corre as vezes que forem precisas: os aparelhos são procurados pelo número do
  * cartão e, na falta dele, pelo IMEI — não duplica o que já lá está.
  *
+ * ⚠️ **A BASE MANDA** (decisão de 2026-09-07, ver `_sincronizacao.js`). Um campo
+ * com valor na base não é tocado — credenciais incluídas —; só se preenchem os
+ * vazios, e as linhas novas entram por inteiro. Um aparelho que a base tenha
+ * entregue a alguém **não muda de mãos pela importação**. O que a folha diz de
+ * diferente aparece no resumo, sem ser gravado.
+ *
+ * ⚠️ **O `--limpar` é a excepção, e apaga tudo.** Continua a existir para quando
+ * se quer recomeçar do ficheiro de propósito, mas contraria a regra acima: apaga
+ * os 300 aparelhos e com eles as entregas, avarias e abates. Não é para uma
+ * corrida de rotina.
+ *
  * ⚠️ O que este importador NÃO faz, de propósito:
  *
  *  - **Não completa os PIN nem os PUK.** Na folha são numéricos, portanto o
@@ -33,6 +44,8 @@ const fs = require('fs');
 const ExcelJS = require('exceljs');
 // Base própria dos telemóveis — ver `db-telemoveis.js` e a migração 002.
 const { poolPromise, sql } = require('../db-telemoveis');
+// A regra é a mesma nos quatro importadores: a base manda. Ver o ficheiro.
+const { preencherBuracos, divergencias, mostrarDivergencias } = require('./_sincronizacao');
 
 const CAMINHO_OMISSAO = 'C:\\Apps\\telemoveis\\Livro 1.xlsx';
 const LIMPAR = process.argv.includes('--limpar');
@@ -182,7 +195,12 @@ async function principal() {
     console.log('  (aparelhos apagados antes de importar — --limpar)');
   }
 
-  const resumo = { lidas: 0, criados: 0, atualizados: 0, duplicadas_na_folha: 0, atribuicoes: 0, avarias: 0, abates: 0, vazias: 0, sem_numero: 0 };
+  const resumo = {
+    lidas: 0, criados: 0, atualizados: 0, duplicadas_na_folha: 0,
+    atribuicoes: 0, avarias: 0, abates: 0, vazias: 0, sem_numero: 0,
+    entregas_ignoradas: 0,   // aparelhos que a base já tem entregues a alguém
+    divergencias: [],        // onde a folha discorda da base — não gravado
+  };
 
   // Uma linha que casa com um aparelho criado NESTA corrida é uma linha repetida
   // na folha, não uma actualização — a folha tem a linha 124 outra vez na 125,
@@ -224,14 +242,16 @@ async function principal() {
       sobra(extra) ? `Inf: ${extra}` : null,
     ].filter(Boolean).join(' · ') || null;
 
-    // Encontrar ou criar o aparelho.
-    let id = null;
+    // Encontrar ou criar o aparelho. Traz-se a linha inteira, não só o id: é com
+    // ela que se vê onde é que a folha discorda da base.
+    let linha = null;
     for (const [col, val] of [['numero', numero], ['imei1', imei1]]) {
-      if (!val || id) continue;
+      if (!val || linha) continue;
       const achado = await pool.request().input('v', sql.NVarChar(30), val)
-        .query(`SELECT TOP 1 id FROM dbo.telemoveis WHERE ${col} = @v`);
-      if (achado.recordset.length) id = achado.recordset[0].id;
+        .query(`SELECT TOP 1 * FROM dbo.telemoveis WHERE ${col} = @v`);
+      if (achado.recordset.length) linha = achado.recordset[0];
     }
+    let id = linha ? linha.id : null;
 
     const campos = {
       numero, imei1, imei2,
@@ -247,14 +267,25 @@ async function principal() {
     };
 
     if (id) {
+      // A BASE MANDA: só se preenchem os campos vazios na base. O que a folha
+      // diz de diferente não se grava — vai para o resumo, à vista.
+      // ⚠️ As credenciais entram nesta regra como tudo o resto: um PIN corrigido
+      // no ecrã não é desfeito pelo que a folha ainda tem.
+      for (const d of divergencias(linha, campos)) {
+        resumo.divergencias.push({ chave: numero || imei1, ...d });
+      }
+
       const p = pool.request().input('id', sql.Int, id);
-      const sets = [];
+      const colunas = [];
       for (const [c, v] of Object.entries(campos)) {
         if (v === null) continue;
         p.input(c, sql.NVarChar(200), v);
-        sets.push(`${c} = @${c}`);
+        colunas.push(c);
       }
-      if (sets.length) await p.query(`UPDATE dbo.telemoveis SET ${sets.join(', ')}, atualizado_em = GETDATE() WHERE id = @id`);
+      if (colunas.length) {
+        await p.query(`UPDATE dbo.telemoveis SET ${preencherBuracos(colunas).join(', ')},
+                       atualizado_em = GETDATE() WHERE id = @id`);
+      }
       if (criadosNestaCorrida.has(id)) resumo.duplicadas_na_folha++;
       else resumo.atualizados++;
     } else {
@@ -281,13 +312,27 @@ async function principal() {
     }
     resumo.lidas++;
 
-    // Atribuição: só quando 'Entregue' traz mesmo um nome.
+    // Atribuição: só quando 'Entregue' traz mesmo um nome — e **só quando a base
+    // tem o aparelho por entregar**. Um telemóvel que a base já dê a alguém não
+    // muda de mãos pela importação, nem que a folha diga outro nome: quem tem o
+    // quê decide-se no ecrã, e a folha a discordar aparece no resumo.
     const temNome = entregue && !PALAVRAS_ABATE.test(chave(entregue));
     if (temNome) {
-      const ja = await pool.request()
-        .input('tid', sql.Int, id).input('nome', sql.NVarChar(200), entregue)
-        .query(`SELECT TOP 1 id FROM dbo.telemoveis_atribuicoes WHERE telemovel_id = @tid AND nome_utilizador = @nome`);
-      if (!ja.recordset.length) {
+      const aberta = await pool.request().input('tid', sql.Int, id)
+        .query(`SELECT TOP 1 nome_utilizador, matricula FROM dbo.telemoveis_atribuicoes
+                WHERE telemovel_id = @tid AND data_devolucao IS NULL`);
+      if (aberta.recordset.length) {
+        const naBase = aberta.recordset[0];
+        if (String(naBase.nome_utilizador || '').trim() !== String(entregue).trim()) {
+          resumo.divergencias.push({
+            chave: numero || imei1,
+            campo: 'entregue a',
+            base: `${naBase.nome_utilizador || '?'} · ${naBase.matricula || '—'}`,
+            ficheiro: `${entregue} · ${matricula || '—'}`,
+          });
+        }
+        resumo.entregas_ignoradas++;
+      } else {
         await pool.request()
           .input('tid', sql.Int, id)
           .input('mec', sql.Int, matricula)
@@ -347,8 +392,13 @@ async function principal() {
   const contagens = await pool.request().query(
     'SELECT estado, COUNT(*) AS total FROM dbo.telemoveis GROUP BY estado ORDER BY estado');
 
+  // No ecrã vai a contagem; a lista inteira fica no `resumo` gravado na tabela
+  // das importações, que é onde se vai ver o que discordava naquele dia.
   console.log('\nResumo da importação:');
-  console.log(JSON.stringify(resumo, null, 2));
+  console.log(JSON.stringify({ ...resumo, divergencias: resumo.divergencias.length }, null, 2));
+
+  mostrarDivergencias(resumo.divergencias);
+
   console.log('\nTelemóveis por estado:');
   for (const l of contagens.recordset) console.log(`  ${l.estado.padEnd(12)} ${l.total}`);
 }

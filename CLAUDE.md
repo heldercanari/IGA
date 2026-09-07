@@ -47,6 +47,33 @@ ecrãs — a mesma divisão que o próprio IGA faz entre a sigla e o nome inteir
 - ⚠️ **Sem `#` nas passwords do `.env`.** O `dotenv` corta um valor sem aspas no primeiro
   cardinal, e o que chega ao driver é só o princípio — o erro que se vê é "Login failed".
 
+## A base de dados manda sobre os ficheiros
+
+Decisão de 2026-09-07, e **é a regra mais importante dos importadores**. Vive em
+`scripts/_sincronizacao.js`, partilhado pelos quatro — não é um ajudante, é a política, e uma
+cópia por importador era como deixar de a haver.
+
+- **Um campo com valor na base não se toca**, diga o ficheiro o que disser: `SET coluna =
+  ISNULL(coluna, @novo)`. ⚠️ **A ordem dos argumentos do `ISNULL` é a política inteira** — ao
+  contrário (`ISNULL(@novo, coluna)`) o ficheiro ganha. Foi assim que o alias, o TIE, o ISSI e a
+  marca dos rádios estiveram até esta data.
+- **Um campo vazio na base é preenchido pelo ficheiro**, e uma linha que não existe entra por
+  inteiro: encher buracos e trazer equipamento novo continua a ser para o que eles servem.
+- **Equipamento com entrega aberta na base não muda de mãos pela importação.** O
+  `atribuidos.xlsx` deixou de fechar entregas; era o "quem tem o quê agora" e passou a ser uma
+  sugestão para os rádios que a base tem por entregar.
+- **O que o ficheiro diz de diferente vai para o resumo**, campo a campo, sem ser gravado. Sem
+  isso a regra tornava os importadores mudos e as folhas afastavam-se sem ninguém dar por nada.
+- ⚠️ **`avarias.csv` é a excepção, e continua a mandar nas suas avarias.** Não é um dump de
+  outro sistema: é escrito à mão dentro do repositório para ser a interface das avarias, e tirar
+  uma linha continua a ser a forma de dizer "reparado". Continua a mexer só nas que ele próprio
+  abriu — as do ecrã ficam intocadas, como sempre ficaram.
+- ⚠️ **O `--limpar` do importador dos telemóveis contraria isto e apaga tudo.** Ficou por ser
+  uma escolha explícita de quem o corre, mas não é para uma corrida de rotina.
+
+Porquê: o IP da impressora da AADIVPOL foi corrigido à mão e a importação seguinte desfez a
+correcção sem dizer nada. Um ecrã onde uma correcção não dura não serve para nada.
+
 ## Duas bases de dados, quatro tipos
 
 - **Os rádios estão na `RadiosDev` e os telemóveis na `TelemoveisDev`.** Duas pools: o `db.js`
@@ -123,14 +150,19 @@ radios.xlsx`, a folha `TEI` antiga) — essas ficaram só no histórico do git.
   histórico de quem mudou o quê. Colunas `Obs;Avaria;Rádio`, `;`-separado, com BOM UTF-8 — o
   mesmo formato que o próprio ecrã exporta. `Avaria` a conter "prog" (case-insensitive) marca
   `ordem = 'P'`; o resto é `'*'`. `Obs` vira `localizacao`.
-- **`importarAvariasCSV()` sincroniza como o `atribuidos.xlsx`, não substitui.** Só mexe em
-  avarias com `registado_por = 'importação'` — nunca nas abertas pelo ecrã à mão (ver `radios
-  553`, avaria de utilizador, intocada por todas as corridas). A cada execução: indicativos que
-  saíram do ficheiro fecham (`estado = 'reparada'`, `data_reparacao = GETDATE()`); os que
-  ficaram mas mudaram de texto actualizam; os novos abrem — usando o mesmo `radioDoIndicativo()`
-  do `atribuidos.xlsx`, incluindo a ficha mínima para indicativos sem linha no master. Remover
-  uma linha do CSV é a forma de dizer "reparado"; a seguir ao `UPDATE` de `recalcularEstado()`
-  no fim do import, o rádio volta a `disponivel` ou `atribuido`, consoante o caso.
+- ⚠️ **`importarAvariasCSV()` é a excepção à regra de que a base manda** (ver essa secção). O
+  `atribuidos.xlsx` deixou de fechar entregas em 2026-09-07; este continua a fechar as suas
+  avarias, e é de propósito: não é um dump de outro sistema, é escrito à mão dentro do
+  repositório **para ser a interface das avarias**. Tirar-lhe essa capacidade tirava-lhe a razão
+  de existir.
+  Só mexe em avarias com `registado_por = 'importação'` — nunca nas abertas pelo ecrã à mão (ver
+  `radios 553`, avaria de utilizador, intocada por todas as corridas). A cada execução:
+  indicativos que saíram do ficheiro fecham (`estado = 'reparada'`, `data_reparacao =
+  GETDATE()`); os que ficaram mas mudaram de texto actualizam; os novos abrem — usando o mesmo
+  `radioDoIndicativo()` do `atribuidos.xlsx`, incluindo a ficha mínima para indicativos sem
+  linha no master. Remover uma linha do CSV é a forma de dizer "reparado"; a seguir ao `UPDATE`
+  de `recalcularEstado()` no fim do import, o rádio volta a `disponivel` ou `atribuido`,
+  consoante o caso.
 - **Não há abates nestas três fontes.** O importador não toca em `radios_abates` — fica como o
   ecrã o deixar, até haver ficheiro próprio ou processo manual definido.
 - **Sem `--limpar`.** Ao contrário do importador antigo, este sincroniza em vez de destruir: uma

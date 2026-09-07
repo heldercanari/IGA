@@ -142,11 +142,38 @@ NSIC — impressoras, telemóveis, tablets, portáteis, GPS, cofres —, e o imp
 vai à folha `Kodak PIXPRO` **pelo nome**, nunca "a primeira folha" (a primeira é a das
 impressoras Lexmark). Se a folha for renomeada, o script pára e lista as que existem.
 
+### ⚠️ A base de dados manda
+
+Desde 2026-09-07, **os importadores não escrevem por cima do que está na base**. A regra vive em
+`scripts/_sincronizacao.js` e é a mesma nos quatro:
+
+| | |
+|---|---|
+| campo **com valor** na base | fica como está, diga o ficheiro o que disser |
+| campo **vazio** na base | é preenchido pelo ficheiro |
+| linha que **não existe** | entra por inteiro |
+| equipamento **já entregue** na base | não muda de mãos pela importação |
+| o que o ficheiro diz **de diferente** | aparece no resumo, campo a campo, sem ser gravado |
+
+A razão foi concreta: o IP de uma impressora foi corrigido pelo ecrã e a importação seguinte
+desfez a correcção em silêncio. Um ecrã onde uma correcção não dura não serve para nada.
+
+Na prática, os ficheiros passaram de **fonte** a **sugestão**: servem para trazer equipamento
+novo e preencher o que a base não sabe. Quem tem o quê, e o valor certo de cada campo,
+decide-se no ecrã. Uma corrida sobre dados já importados não muda nada — só diz onde é que a
+folha e a base discordam.
+
+**Duas excepções**, ambas deliberadas: o `avarias.csv` continua a mandar nas avarias que ele
+próprio abriu (é escrito à mão no repositório para ser a interface das avarias, e tirar-lhe uma
+linha continua a ser a forma de dizer "reparado"), e o `--limpar` do importador dos telemóveis
+continua a apagar tudo — é uma escolha explícita de quem o corre, não uma corrida de rotina.
+
+### O resto
+
 Correm as vezes que forem precisas. Ao contrário do importador dos telemóveis, o dos rádios
-**não tem `--limpar`**: sincroniza em vez de destruir — uma segunda corrida fecha o que já não
-bate e abre o que falta, nunca apaga em bloco. Vale para as três fontes: o rádio é encontrado
-pelo alias (a chave do master) ou pelo indicativo, a entrega por (rádio, matrícula) e a avaria
-por (rádio, ainda aberta, aberta por este importador) — nada duplica.
+**não tem `--limpar`**: sincroniza em vez de destruir, nunca apaga em bloco. O rádio é
+encontrado pelo alias (a chave do master) ou pelo indicativo, a entrega por (rádio, matrícula) e
+a avaria por (rádio, ainda aberta, aberta por este importador) — nada duplica.
 
 Como o `atribuidos.xlsx` não tem datas, todas as entregas desta importação levam a mesma data
 fixa no código (`DATA_ATRIBUICAO_PADRAO`) — é quando o levantamento foi feito, não quando a
@@ -157,8 +184,7 @@ de fora, dos dois lados, até se resolver na origem), números sem correspondên
 corrida anterior. Ver `scripts/importar_radios.js` e o CLAUDE.md para o detalhe de cada regra.
 
 O das impressoras também sincroniza e também **não tem `--limpar`**: encontra a máquina pelo
-número de série e, na falta dele, pelo host name, e uma célula vazia na folha não apaga o que
-já lá está. **Tira os zeros à esquerda dos IP** (`10.22.129.049` → `10.22.129.49`) e conta no
+número de série e, na falta dele, pelo host name. **Tira os zeros à esquerda dos IP** (`10.22.129.049` → `10.22.129.49`) e conta no
 resumo quantas linhas vinham assim — hoje três. No fim **avisa quando o host name não bate
 certo com o último octeto do IP** — hoje uma linha, a da AADIVPOL; esse, o importador não
 corrige, porque não há maneira de saber qual dos dois valores está errado.

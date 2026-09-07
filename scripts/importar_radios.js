@@ -35,8 +35,25 @@
  * Corre as vezes que forem precisas: o equipamento é encontrado pelo alias (a
  * chave do master) e a atribuição por (rádio, matrícula) — não duplica. Ao
  * contrário do importador anterior, este NÃO tem `--limpar`: não apaga nada em
- * bloco. Uma segunda corrida sincroniza — fecha o que já não bate e abre o que
- * é novo — em vez de destruir e recomeçar.
+ * bloco.
+ *
+ * ⚠️ **A BASE MANDA** (decisão de 2026-09-07, ver `_sincronizacao.js`). Mudou o
+ * que uma segunda corrida faz:
+ *
+ *  - **`master radios.xlsx`** já não escreve por cima de nada. Um campo com
+ *    valor na base fica como está; só se preenchem os vazios. (Até esta data o
+ *    alias, o TIE, o ISSI e a marca eram do ficheiro — o resto já era da base.)
+ *  - **`atribuidos.xlsx` deixou de fechar entregas.** Era o "quem tem o quê
+ *    agora" e passou a ser uma sugestão: abre entregas só para rádios que a base
+ *    tem por entregar, e nunca tira um rádio a quem a base diz que o tem.
+ *  - **`avarias.csv` é a excepção, e continua a mandar nas suas avarias.** Não é
+ *    um dump de outro sistema: é escrito à mão dentro deste repositório para ser
+ *    a interface das avarias, e tirar-lhe uma linha continua a ser a forma de
+ *    dizer "reparado". Só mexe nas avarias que ele próprio abriu — as do ecrã
+ *    ficam intocadas, como sempre ficaram.
+ *
+ * O que as folhas dizem de diferente não se perde: aparece no resumo, campo a
+ * campo, para se resolver onde manda.
  */
 
 require('dotenv').config();
@@ -45,6 +62,8 @@ const fs = require('fs');
 const path = require('path');
 const ExcelJS = require('exceljs');
 const { poolPromise, sql } = require('../db');
+// A regra é a mesma nos quatro importadores: a base manda. Ver o ficheiro.
+const { divergencias, mostrarDivergencias } = require('./_sincronizacao');
 
 const MASTER = 'C:\\Apps\\master radios.xlsx';
 const ATRIBUIDOS = 'C:\\Apps\\atribuidos.xlsx';
@@ -169,28 +188,40 @@ async function importarMaster(pool, resumo) {
                  : (/^SC$/i.test(modeloBruto || '') ? null : modeloBruto);
     const indicativo = indicativoDoAlias(alias);
 
-    let id = null;
+    // Traz-se a linha inteira, não só o id: é com ela que se vê onde é que o
+    // master discorda da base.
+    let linha = null;
     if (alias) {
       const r1 = await pool.request().input('v', sql.NVarChar(60), alias)
-        .query('SELECT TOP 1 id FROM dbo.radios WHERE alias_tei = @v');
-      if (r1.recordset.length) id = r1.recordset[0].id;
+        .query('SELECT TOP 1 * FROM dbo.radios WHERE alias_tei = @v');
+      if (r1.recordset.length) linha = r1.recordset[0];
     }
-    if (!id && num_serie) {
+    if (!linha && num_serie) {
       const r2 = await pool.request().input('v', sql.NVarChar(60), num_serie)
-        .query('SELECT TOP 1 id FROM dbo.radios WHERE num_serie = @v');
-      if (r2.recordset.length) id = r2.recordset[0].id;
+        .query('SELECT TOP 1 * FROM dbo.radios WHERE num_serie = @v');
+      if (r2.recordset.length) linha = r2.recordset[0];
     }
-    if (!id && indicativo) {
+    if (!linha && indicativo) {
       // Cobre o rádio que o atribuidos.xlsx criou em bruto (sem ficha) numa
       // corrida anterior, para o master o vir completar em vez de duplicar —
       // só quando é o único com esse indicativo, como em todo o lado nesta casa.
       const r3 = await pool.request().input('i', sql.NVarChar(20), indicativo)
-        .query(`SELECT TOP 1 id FROM dbo.radios WHERE indicativo = @i
+        .query(`SELECT TOP 1 * FROM dbo.radios WHERE indicativo = @i
                   AND (SELECT COUNT(*) FROM dbo.radios o WHERE o.indicativo = @i) = 1`);
-      if (r3.recordset.length) id = r3.recordset[0].id;
+      if (r3.recordset.length) linha = r3.recordset[0];
     }
+    const id = linha ? linha.id : null;
 
     if (id) {
+      // A BASE MANDA: o que o master diz de diferente não se grava, aparece no
+      // resumo. As chaves são as colunas da base, para a comparação bater certo.
+      for (const d of divergencias(linha, {
+        alias_tei: alias, tie, radio_id_tei: issi, marca, modelo,
+        indicativo, num_serie,
+      })) {
+        resumo.divergencias.push({ chave: indicativo || alias || num_serie, ...d });
+      }
+
       await pool.request()
         .input('id', sql.Int, id)
         .input('alias', sql.NVarChar(60), alias)
@@ -200,11 +231,17 @@ async function importarMaster(pool, resumo) {
         .input('marca', sql.NVarChar(40), marca)
         .input('modelo', sql.NVarChar(60), modelo)
         .input('ind', sql.NVarChar(20), indicativo)
+        // A base primeiro em TODOS os campos: `ISNULL(coluna, @novo)` fica com o
+        // que a base tem e só usa o do ficheiro quando ela não tem nada.
+        // ⚠️ Até 2026-09-07 o alias, o TIE, o ISSI e a marca estavam ao
+        // contrário — `ISNULL(@novo, coluna)` — e o master escrevia por cima do
+        // que tivesse sido corrigido no ecrã. Não voltes a inverter a ordem
+        // destes argumentos a pensar que é indiferente: não é, é a política.
         .query(`UPDATE dbo.radios SET
-                  alias_tei     = ISNULL(@alias, alias_tei),
-                  tie           = ISNULL(@tie, tie),
-                  radio_id_tei  = ISNULL(@issi, radio_id_tei),
-                  marca         = ISNULL(@marca, marca),
+                  alias_tei     = ISNULL(alias_tei, @alias),
+                  tie           = ISNULL(tie, @tie),
+                  radio_id_tei  = ISNULL(radio_id_tei, @issi),
+                  marca         = ISNULL(marca, @marca),
                   modelo        = ISNULL(modelo, @modelo),
                   indicativo    = ISNULL(indicativo, @ind),
                   num_serie     = CASE WHEN num_serie IS NULL AND @serie IS NOT NULL
@@ -274,18 +311,31 @@ async function sincronizarEntregas(pool, pessoa, indicativos, resumo) {
   }
   if (!idsAlvo.length) { resumo.atribuidos.sem_radio++; return; }
 
-  const abertas = await pool.request().input('mat', sql.Int, pessoa.matricula)
-    .query('SELECT id, radio_id FROM dbo.radios_atribuicoes WHERE matricula = @mat AND data_devolucao IS NULL');
-
-  for (const a of abertas.recordset) {
-    if (idsAlvo.includes(a.radio_id)) continue;
-    await pool.request().input('id', sql.Int, a.id).input('fim', sql.Date, DATA_ATRIBUICAO_PADRAO)
-      .query('UPDATE dbo.radios_atribuicoes SET data_devolucao = @fim WHERE id = @id');
-  }
-
-  const jaTem = new Set(abertas.recordset.filter(a => idsAlvo.includes(a.radio_id)).map(a => a.radio_id));
+  // A BASE MANDA (2026-09-07). Antes, esta função fechava as entregas abertas
+  // desta pessoa que o ficheiro já não mencionava — o `atribuidos.xlsx` era o
+  // "quem tem o quê agora". Deixou de ser: quem tem o quê decide-se no ecrã, e
+  // uma devolução por engano no ficheiro não pode fechar uma entrega real.
+  // A importação passa a abrir entregas **só para rádios que a base tem por
+  // entregar**; o resto fica como está e a discordância vai para o resumo.
   for (const radioId of idsAlvo) {
-    if (jaTem.has(radioId)) continue;
+    const aberta = await pool.request().input('rid', sql.Int, radioId)
+      .query(`SELECT TOP 1 matricula, nome_utilizador FROM dbo.radios_atribuicoes
+              WHERE radio_id = @rid AND data_devolucao IS NULL`);
+
+    if (aberta.recordset.length) {
+      const naBase = aberta.recordset[0];
+      if (naBase.matricula !== pessoa.matricula) {
+        resumo.divergencias.push({
+          chave: `rádio #${radioId}`,
+          campo: 'entregue a',
+          base: `${naBase.nome_utilizador || '?'} · ${naBase.matricula || '—'}`,
+          ficheiro: `${pessoa.nome || '?'} · ${pessoa.matricula || '—'}`,
+        });
+      }
+      resumo.atribuidos.entregas_ignoradas++;
+      continue;
+    }
+
     await pool.request()
       .input('rid', sql.Int, radioId)
       .input('mat', sql.Int, pessoa.matricula)
@@ -450,8 +500,9 @@ async function principal() {
 
   const resumo = {
     master: { lidas: 0, criados: 0, actualizados: 0 },
-    atribuidos: { lidas: 0, duplicadas: 0, em_conflito: 0, sem_radio: 0, radios_criados: 0, atribuicoes: 0 },
+    atribuidos: { lidas: 0, duplicadas: 0, em_conflito: 0, sem_radio: 0, radios_criados: 0, atribuicoes: 0, entregas_ignoradas: 0 },
     avarias_csv: { lidas: 0, radios_criados: 0, abertas: 0, actualizadas: 0, reparadas: 0 },
+    divergencias: [],   // onde as folhas discordam da base — não gravado
   };
 
   process.stdout.write('  master radios.xlsx… ');
@@ -482,8 +533,13 @@ async function principal() {
   const contagens = await pool.request().query(
     'SELECT estado, COUNT(*) AS total FROM dbo.radios GROUP BY estado ORDER BY estado');
 
+  // No ecrã vai a contagem; a lista inteira é longa de mais para o terminal
+  // quando as folhas se afastam da base.
   console.log('\nResumo da importação:');
-  console.log(JSON.stringify(resumo, null, 2));
+  console.log(JSON.stringify({ ...resumo, divergencias: resumo.divergencias.length }, null, 2));
+
+  mostrarDivergencias(resumo.divergencias);
+
   console.log('\nParque por estado:');
   for (const l of contagens.recordset) console.log(`  ${l.estado.padEnd(12)} ${l.total}`);
 }

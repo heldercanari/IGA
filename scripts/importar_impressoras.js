@@ -9,6 +9,13 @@
  * Corre as vezes que forem precisas: a máquina é procurada pelo número de série
  * e, na falta dele, pelo host name — não duplica o que já lá está.
  *
+ * ⚠️ **A BASE MANDA** (decisão de 2026-09-07, ver `_sincronizacao.js`). Um campo
+ * que já tenha valor na base não é tocado, diga a folha o que disser; só se
+ * preenchem os que estão vazios, e as linhas que não existem entram por inteiro.
+ * O que a folha diz de diferente aparece no resumo, campo a campo, sem ser
+ * gravado. Foi o IP desta AADIVPOL, corrigido à mão e desfeito pela importação
+ * seguinte, que trocou a regra.
+ *
  * **Não tem `--limpar`**, como o dos rádios e ao contrário do dos telemóveis.
  * Sincroniza em vez de destruir: uma segunda corrida actualiza o que mudou na
  * folha e acrescenta o que falta, e nunca apaga uma máquina que alguém tenha
@@ -40,6 +47,8 @@ const ExcelJS = require('exceljs');
 // Base do módulo — a mesma dos rádios. As impressoras não têm base própria nem
 // pool própria; ver a migração 003.
 const { poolPromise, sql } = require('../db');
+// A regra é a mesma nos quatro importadores: a base manda. Ver o ficheiro.
+const { preencherBuracos, divergencias, mostrarDivergencias } = require('./_sincronizacao');
 
 const CAMINHO_OMISSAO = 'C:\\Apps\\impressoras Konica.xlsx';
 const CAMINHO_ARG = process.argv.slice(2).find(a => !a.startsWith('--'));
@@ -146,6 +155,7 @@ async function principal() {
     vazias: 0,
     ips_normalizados: 0,   // linhas cujo IP na folha tinha zeros à esquerda
     host_diverge_do_ip: [],
+    divergencias: [],      // onde o ficheiro discorda da base — não gravado
   };
 
   // Uma linha que casa com uma máquina criada NESTA corrida é uma linha repetida
@@ -182,26 +192,34 @@ async function principal() {
 
     // Encontrar a máquina: primeiro pela série (a chave do parque), depois pelo
     // host name. Os dois são índices únicos filtrados, portanto no máximo há uma.
-    let id = null;
+    // Traz-se a linha inteira, não só o id: é com ela que se vê onde é que o
+    // ficheiro discorda da base.
+    let linha = null;
     for (const col of ['num_serie', 'host_name']) {
-      if (!campos[col] || id) continue;
+      if (!campos[col] || linha) continue;
       const achado = await pool.request().input('v', sql.NVarChar(60), campos[col])
-        .query(`SELECT TOP 1 id FROM dbo.impressoras WHERE ${col} = @v`);
-      if (achado.recordset.length) id = achado.recordset[0].id;
+        .query(`SELECT TOP 1 * FROM dbo.impressoras WHERE ${col} = @v`);
+      if (achado.recordset.length) linha = achado.recordset[0];
     }
+    let id = linha ? linha.id : null;
 
     if (id) {
-      // Só os valores que a folha traz: uma célula vazia não apaga o que já lá
-      // está — pode ter sido preenchido pelo ecrã depois da última exportação.
+      // A BASE MANDA: só se preenchem os campos que estão vazios na base. O que
+      // o ficheiro diz de diferente não se grava — vai para o resumo, à vista.
+      for (const d of divergencias(linha, campos)) {
+        resumo.divergencias.push({ chave: campos.num_serie || campos.host_name, ...d });
+      }
+
       const p = pool.request().input('id', sql.Int, id);
-      const sets = [];
+      const colunas = [];
       for (const [c, v] of Object.entries(campos)) {
         if (v === null) continue;
         p.input(c, sql.NVarChar(160), v);
-        sets.push(`${c} = @${c}`);
+        colunas.push(c);
       }
-      if (sets.length) {
-        await p.query(`UPDATE dbo.impressoras SET ${sets.join(', ')}, atualizado_em = GETDATE() WHERE id = @id`);
+      if (colunas.length) {
+        await p.query(`UPDATE dbo.impressoras SET ${preencherBuracos(colunas).join(', ')},
+                       atualizado_em = GETDATE() WHERE id = @id`);
       }
       if (criadasNestaCorrida.has(id)) resumo.duplicadas_na_folha++;
       else resumo.atualizadas++;
@@ -233,8 +251,12 @@ async function principal() {
     SELECT ISNULL(localizacao, N'(sem local)') AS localizacao, COUNT(*) AS total
     FROM dbo.impressoras GROUP BY localizacao ORDER BY localizacao`);
 
+  // No ecrã vai a contagem; a lista inteira fica no `resumo` gravado na tabela
+  // das importações, que é onde se vai ver o que discordava naquele dia.
   console.log('\nResumo da importação:');
-  console.log(JSON.stringify(resumo, null, 2));
+  console.log(JSON.stringify({ ...resumo, divergencias: resumo.divergencias.length }, null, 2));
+
+  mostrarDivergencias(resumo.divergencias);
 
   if (resumo.host_diverge_do_ip.length) {
     console.log('\n⚠️  Host name não bate certo com o último octeto do IP:');

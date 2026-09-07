@@ -17,6 +17,12 @@
  * falta dele, pelo número de série. **Não tem `--limpar`**, como o dos rádios e
  * o das impressoras: sincroniza em vez de destruir.
  *
+ * ⚠️ **A BASE MANDA** (decisão de 2026-09-07, ver `_sincronizacao.js`). Um campo
+ * com valor na base não é tocado; só se preenchem os vazios, e as linhas novas
+ * entram por inteiro. Uma máquina que a base tenha entregue a alguém **não muda
+ * de mãos pela importação**, nem que a folha diga outro nome — quem tem o quê
+ * decide-se no ecrã. Tudo o que a folha diz de diferente aparece no resumo.
+ *
  * **Uniformiza a capacidade** para a forma correcta — `32Gb`, `32GB` e `32 Gb`
  * entram todos como `32 GB`. A folha escreve-a das três maneiras; a base guarda
  * uma, com o `B` de *byte* em maiúscula (o `b` minúsculo é *bit*, e um cartão de
@@ -43,6 +49,8 @@ const fs = require('fs');
 const ExcelJS = require('exceljs');
 // Base do módulo — a mesma dos rádios e das impressoras. Ver a migração 004.
 const { poolPromise, sql } = require('../db');
+// A regra é a mesma nos quatro importadores: a base manda. Ver o ficheiro.
+const { preencherBuracos, divergencias, mostrarDivergencias } = require('./_sincronizacao');
 
 const CAMINHO_OMISSAO = 'C:\\Apps\\Kodak.xlsx';
 const CAMINHO_ARG = process.argv.slice(2).find(a => !a.startsWith('--'));
@@ -160,6 +168,8 @@ async function principal() {
     sem_serie: 0,
     vazias: 0,
     capacidades_arrumadas: 0,   // linhas cuja capacidade a folha escrevia de outra maneira
+    entregas_ignoradas: 0,      // máquinas que a base já tem entregues a alguém
+    divergencias: [],           // onde o ficheiro discorda da base — não gravado
   };
 
   const criadasNestaCorrida = new Set();
@@ -186,27 +196,35 @@ async function principal() {
     const dataEntrega = dataDaCelula(r.getCell(COLUNAS.data));
 
     // Encontrar a máquina: primeiro pelo ID-PM (a chapa), depois pela série.
-    // Os dois são índices únicos filtrados, portanto no máximo há uma.
-    let id = null;
+    // Os dois são índices únicos filtrados, portanto no máximo há uma. Traz-se a
+    // linha inteira, não só o id: é com ela que se vê onde é que a folha
+    // discorda da base.
+    let linha = null;
     for (const col of ['pm_id', 'num_serie']) {
-      if (!campos[col] || id) continue;
+      if (!campos[col] || linha) continue;
       const achado = await pool.request().input('v', sql.NVarChar(40), campos[col])
-        .query(`SELECT TOP 1 id FROM dbo.maquinas WHERE ${col} = @v`);
-      if (achado.recordset.length) id = achado.recordset[0].id;
+        .query(`SELECT TOP 1 * FROM dbo.maquinas WHERE ${col} = @v`);
+      if (achado.recordset.length) linha = achado.recordset[0];
     }
+    let id = linha ? linha.id : null;
 
     if (id) {
-      // Só os valores que a folha traz: uma célula vazia não apaga o que já lá
-      // está, que pode ter sido preenchido pelo ecrã depois desta exportação.
+      // A BASE MANDA: só se preenchem os campos vazios na base. O que a folha
+      // diz de diferente não se grava — vai para o resumo, à vista.
+      for (const d of divergencias(linha, campos)) {
+        resumo.divergencias.push({ chave: campos.pm_id || campos.num_serie, ...d });
+      }
+
       const p = pool.request().input('id', sql.Int, id);
-      const sets = [];
+      const colunas = [];
       for (const [c, v] of Object.entries(campos)) {
         if (v === null) continue;
         p.input(c, sql.NVarChar(80), v);
-        sets.push(`${c} = @${c}`);
+        colunas.push(c);
       }
-      if (sets.length) {
-        await p.query(`UPDATE dbo.maquinas SET ${sets.join(', ')}, atualizado_em = GETDATE() WHERE id = @id`);
+      if (colunas.length) {
+        await p.query(`UPDATE dbo.maquinas SET ${preencherBuracos(colunas).join(', ')},
+                       atualizado_em = GETDATE() WHERE id = @id`);
       }
       if (criadasNestaCorrida.has(id)) resumo.duplicadas_na_folha++;
       else resumo.atualizadas++;
@@ -227,17 +245,32 @@ async function principal() {
     }
     resumo.lidas++;
 
-    // A entrega. Procurada por (máquina, quem), como nos outros importadores:
-    // uma segunda corrida reconhece a que já lá está em vez de a repetir.
+    // A entrega. **A base manda também aqui**: uma máquina que já esteja
+    // entregue a alguém na base não muda de mãos pela importação, nem que a
+    // folha diga outro nome. Quem tem o quê decide-se no ecrã, e a folha a
+    // discordar aparece no resumo. A importação só abre entregas para máquinas
+    // que a base tem por entregar.
     if (!levantou && matricula === null) continue;
 
-    const p = pool.request().input('mid', sql.Int, id);
-    const condicoes = ['maquina_id = @mid', 'data_devolucao IS NULL'];
-    if (matricula !== null) { p.input('mec', sql.Int, matricula); condicoes.push('matricula = @mec'); }
-    else { p.input('nome', sql.NVarChar(200), levantou); condicoes.push('nome_utilizador = @nome'); }
+    const aberta = await pool.request().input('mid', sql.Int, id)
+      .query(`SELECT TOP 1 matricula, nome_utilizador FROM dbo.maquinas_atribuicoes
+              WHERE maquina_id = @mid AND data_devolucao IS NULL`);
 
-    const ja = await p.query(`SELECT TOP 1 id FROM dbo.maquinas_atribuicoes WHERE ${condicoes.join(' AND ')}`);
-    if (ja.recordset.length) continue;
+    if (aberta.recordset.length) {
+      const naBase = aberta.recordset[0];
+      const mesma = (matricula !== null && naBase.matricula === matricula) ||
+                    (matricula === null && String(naBase.nome_utilizador || '') === String(levantou || ''));
+      if (!mesma) {
+        resumo.divergencias.push({
+          chave: campos.pm_id || campos.num_serie,
+          campo: 'entregue a',
+          base: `${naBase.nome_utilizador || '?'} · ${naBase.matricula || '—'}`,
+          ficheiro: `${levantou || '?'} · ${matricula || '—'}`,
+        });
+      }
+      resumo.entregas_ignoradas++;
+      continue;
+    }
 
     await pool.request()
       .input('mid', sql.Int, id)
@@ -263,8 +296,12 @@ async function principal() {
       (SELECT COUNT(*) FROM dbo.maquinas) AS total,
       (SELECT COUNT(DISTINCT maquina_id) FROM dbo.maquinas_atribuicoes WHERE data_devolucao IS NULL) AS entregues`);
 
+  // No ecrã vai a contagem; a lista inteira fica no `resumo` gravado na tabela
+  // das importações, que é onde se vai ver o que discordava naquele dia.
   console.log('\nResumo da importação:');
-  console.log(JSON.stringify(resumo, null, 2));
+  console.log(JSON.stringify({ ...resumo, divergencias: resumo.divergencias.length }, null, 2));
+
+  mostrarDivergencias(resumo.divergencias);
 
   if (resumo.entregas_sem_data) {
     console.log(`\n⚠️  ${resumo.entregas_sem_data} levantamento(s) sem data na folha — entraram com a data vazia.`);
