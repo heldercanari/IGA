@@ -9,33 +9,70 @@
          aplica quando corre. Adiado para depois do parse, o browser chega a pintar
          a página em cru. O ficheiro é local, não vem de CDN nenhum. -->
     <script src="/iga/tailwind.global.js"></script>
-    <script src="/iga/lucide.min.js" defer></script>
     <style>
         .hidden { display: none; }
         body, a, button { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after { transition-duration: .01ms !important; }
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
         }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
 
-<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
-    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
-        <img src="/iga/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+<!-- `role="alert"` porque isto não é um aviso de passagem: é o ecrã inteiro a
+     dizer que não se entra, e quem lê com leitor de ecrã tem de o ouvir sem ir à
+     procura. O `#conteudo` esconde-se por baixo — senão ficavam quatro cartões
+     navegáveis pelo Tab atrás de uma cortina opaca. -->
+<div id="ecraErro" role="alert" aria-atomic="true" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <!-- `tabindex="-1"` para o foco poder vir para aqui quando o ecrã sobe: sem
+         isso o foco ficava no `<body>`, atrás de uma cortina, e quem navega por
+         teclado carregava em Tab sem chegar a nada. -->
+    <div id="erroCartao" tabindex="-1" class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <!-- `alt=""`: o brasão é decoração neste ecrã. Com texto alternativo, o
+             `role="alert"` anunciava "Polícia Municipal de Lisboa" ANTES de
+             dizer o que se passa — o leitor de ecrã ouvia primeiro o logótipo. -->
+        <img src="/iga/logo_transparente.png" width="390" height="192" class="h-24 w-auto object-contain mx-auto" alt="">
         <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
-        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-600 leading-relaxed"></p>
+        <!-- A conta é para ser lida em voz alta ao telefone ou copiada para um
+             email: em monospace e destacada, porque é o único texto deste ecrã
+             que tem de sair daqui exactamente como está. -->
+        <p id="erroConta" class="hidden text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2"></p>
+        <!-- Até aqui este ecrã não tinha um único elemento focável: dizia à
+             pessoa o que fazer e não lhe dava nada com que o fizesse. -->
+        <div id="erroAccoes" class="hidden flex flex-wrap items-center justify-center gap-2">
+            <!-- O nome acessível não acompanha o texto visível de propósito: o
+                 painel é `role="alert"`, portanto qualquer mudança lá dentro é
+                 relida por inteiro. Com o nome fixo, o que se relê é igual ao
+                 que já se tinha ouvido, e a confirmação de cópia fica a ser um
+                 sinal visual em vez de uma interrupção. -->
+            <button id="botaoCopiar" type="button" aria-label="Copiar conta"
+                    class="hidden text-xs font-bold text-slate-800 bg-white border border-slate-500 rounded-md px-3 py-1.5 transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                Copiar conta
+            </button>
+            <a id="botaoPedir" href="#"
+               class="hidden text-xs font-bold text-white bg-blue-700 rounded-md px-3 py-1.5 transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">
+                Pedir acesso por email
+            </a>
+            <button id="botaoRecarregar" type="button"
+                    class="hidden text-xs font-bold text-white bg-blue-700 rounded-md px-3 py-1.5 transition hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">
+                Voltar a carregar
+            </button>
+        </div>
     </div>
 </div>
 
-<div class="max-w-[1100px] mx-auto p-6">
+<div id="conteudo" class="max-w-[1400px] mx-auto p-6">
 
     <header class="mb-8 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div class="flex items-center gap-4">
-            <img src="/iga/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <img src="/iga/logo_transparente.png" width="390" height="192" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900">Inventário e Gestão de Ativos
-                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-400">IGA</span>
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-600">IGA</span>
                 </h1>
                 <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
             </div>
@@ -44,19 +81,19 @@
             <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
                 Utilizador: <span id="nomeUtilizador">a carregar…</span>
             </span>
-            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-600"></span>
         </div>
     </header>
 
     <main>
-        <h2 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Equipamentos</h2>
+        <h2 class="text-sm font-bold text-slate-600 uppercase tracking-wide mb-3">Equipamentos</h2>
         <!-- Um cartão por tipo. Esta é a ÚNICA lista de tipos escrita à mão: as
              páginas de equipamento não têm navegação entre tipos, e toda a
              passagem de um para outro é por aqui. Um equipamento novo entra no
              `TIPOS` abaixo e mais nada. -->
-        <div id="cartoes" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"></div>
+        <div id="cartoes" class="grid gap-4 md:grid-cols-2 xl:grid-cols-4"></div>
 
-        <p id="rodape" class="text-xs text-slate-400 mt-8"></p>
+        <p id="rodape" class="text-xs text-slate-600 mt-8"></p>
     </main>
 </div>
 
@@ -73,16 +110,29 @@ const API_MODULO = '/api/iga';
  * seu), portanto um tipo novo entra aqui com o seu endpoint e a sua página, e
  * mais nada.
  *
- * `contagens` são os quatro números do rodapé do cartão, e cada tipo traz os
- * seus: `campo` é a chave que vem do `/estatisticas` desse tipo. Os rádios e os
- * telemóveis contam o mesmo — quem tem o quê, o que está em baixo —, mas as
- * impressoras não são entregues a ninguém e contam outra coisa. Sem esta lista,
- * o cartão das impressoras mostrava "entregues —" e "abatidos —" para sempre.
+ * **`contagens` é a partição, e só a partição.** É a regra que faz a linha dos
+ * números poder ser lida: o que lá está SOMA ao total em cima. Os quatro
+ * estados de um rádio somam 770; instaladas + sem local somam as 16
+ * impressoras; entregues + disponíveis somam as 15 máquinas.
+ *
+ * **`notas` é o resto** — o que se sabe do tipo mas não é uma parte do total.
+ * Os "serviços" e os "modelos" das impressoras contam sítios e modelos, não
+ * impressoras (16 + 16 + 3 + 0 nunca deu 16); as "entregas sem data" das
+ * máquinas são um subconjunto das entregues, não uma parcela ao lado delas.
+ * Estavam os três na mesma linha, com o mesmo tamanho e o mesmo peso, a fingir
+ * a mesma aritmética. Vão para uma legenda por baixo, que é o que são.
+ *
+ * `alerta` marca um campo que conta um problema. Não pinta nada por si: quem
+ * decide a cor é o valor (ver `tomDaContagem`).
+ *
+ * `destaque` marca a parcela que responde à pergunta com que se chega aqui —
+ * "há algum para entregar?". Continua a ser uma parcela como as outras, só sai
+ * maior (ver `classeContagem`). Um tipo pode não ter nenhuma.
  */
 const CONTAGENS_PARQUE = [
   { rotulo: 'entregues', campo: 'atribuidos', cor: 'text-blue-700' },
-  { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700' },
-  { rotulo: 'avariados', campo: 'avariados', cor: 'text-amber-700' },
+  { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700', destaque: true },
+  { rotulo: 'avariados', campo: 'avariados', alerta: true },
   { rotulo: 'abatidos', campo: 'abatidos', cor: 'text-slate-600' },
 ];
 
@@ -113,12 +163,15 @@ const TIPOS = [
     pagina: '/impressoras.html',
     api: '/impressoras',
     // Aqui conta-se o sítio, não a pessoa: as impressoras estão instaladas em
-    // serviços e o módulo delas existe para saber onde cada uma está.
+    // serviços e o módulo delas existe para saber onde cada uma está. A partição
+    // é essa — com morada ou sem ela.
     contagens: [
       { rotulo: 'instaladas', campo: 'com_local', cor: 'text-blue-700' },
-      { rotulo: 'serviços', campo: 'locais', cor: 'text-emerald-700' },
-      { rotulo: 'modelos', campo: 'modelos', cor: 'text-slate-800' },
-      { rotulo: 'sem local', campo: 'sem_local', cor: 'text-amber-700' },
+      { rotulo: 'sem local', campo: 'sem_local', alerta: true },
+    ],
+    notas: [
+      { rotulo: 'serviços', campo: 'locais' },
+      { rotulo: 'modelos', campo: 'modelos' },
     ],
   },
   {
@@ -129,12 +182,16 @@ const TIPOS = [
     pagina: '/maquinas.html',
     api: '/maquinas',
     // Entregam-se a pessoas, mas não têm avarias nem abates (ver a migração
-    // 004): das quatro contagens do parque só duas fazem sentido. A terceira é
-    // o que aqui está por resolver — levantamentos que a folha não datou.
+    // 004): das quatro contagens do parque só duas fazem sentido, e essas duas
+    // são a partição. Os levantamentos que a folha não datou continuam à vista
+    // — em âmbar, quando existem — mas na legenda: são um subconjunto das
+    // entregues, não uma terceira parcela.
     contagens: [
       { rotulo: 'entregues', campo: 'entregues', cor: 'text-blue-700' },
-      { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700' },
-      { rotulo: 'sem data', campo: 'entregas_sem_data', cor: 'text-amber-700' },
+      { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700', destaque: true },
+    ],
+    notas: [
+      { rotulo: 'entregas sem data', campo: 'entregas_sem_data', alerta: true },
     ],
   },
 ];
@@ -144,9 +201,67 @@ const TIPOS = [
  *
  * Escritas por extenso e não interpoladas (`grid-cols-${n}`) de propósito: o
  * Tailwind compila as classes que **encontra no ficheiro**, e uma classe montada
- * em execução não existe para ele — a grelha saía sem colunas nenhumas.
+ * em execução não existe para ele — a grelha saía sem colunas nenhumas. Vale o
+ * mesmo para as medidas dos esqueletos, escritas literalmente nas chamadas.
  */
 const GRELHA_CONTAGENS = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
+
+/**
+ * A partir de quantos dias a última importação passa a ser dita em âmbar.
+ *
+ * As importações correm à mão, quando chega ficheiro novo — não há agendamento
+ * nenhum, portanto isto não é um prazo falhado: é o ponto a partir do qual vale
+ * a pena avisar quem lê os números de que podem já não bater certo com as folhas
+ * de origem. O âmbar sai do VALOR e não do campo — um cartão importado ontem diz
+ * a mesma coisa em cinzento. Âmbar permanente ensina a ignorar o âmbar.
+ */
+const DIAS_ATE_AVISAR = 30;
+
+/** Depois de o ecrã de erro subir, nada mais escreve por baixo dele. */
+let bloqueada = false;
+
+/**
+ * Para onde vai o pedido de acesso, quando o ecrã de bloqueio o oferece.
+ *
+ * Vazio de propósito: não há endereço do NSIC escrito em lado nenhum deste
+ * repositório, e um endereço inventado num botão "Pedir acesso" era pior do que
+ * botão nenhum — o pedido saía e não chegava a ninguém. Preenchido, o ecrã ganha
+ * um botão que abre o email já com a conta e os grupos escritos; vazio, o botão
+ * não aparece e fica o "Copiar conta", que é o que serve o telefone.
+ */
+const EMAIL_NSIC = '';
+
+/**
+ * Os cinco ícones desta página, desenhados aqui em vez de virem do lucide.
+ *
+ * O `lucide.min.js` são 401 KB — o conjunto inteiro — e esta página usa cinco
+ * desenhos de 24×24. Era, de longe, o ficheiro mais pesado da porta de entrada.
+ * A geometria é a do lucide, copiada tal e qual, para continuarem a ser os
+ * mesmos ícones que as outras páginas mostram.
+ *
+ * ⚠️ **As páginas de equipamento continuam a carregar o lucide**: usam dezenas
+ * de ícones e lá o ficheiro paga-se. Isto vale só para a entrada — e é por isso
+ * que o `public/iga/lucide.min.js` continua onde está.
+ *
+ * Um tipo novo traz o seu ícone para este mapa. Se um dia forem precisos muitos
+ * mais, é sinal de que vale a pena reconsiderar e voltar ao ficheiro.
+ */
+const ICONES = {
+  'radio-tower': '<path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9"></path><path d="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5"></path><circle cx="12" cy="9" r="2"></circle><path d="M16.2 4.8c2 2 2.26 5.11.8 7.47"></path><path d="M19.1 1.9a9.96 9.96 0 0 1 0 14.1"></path><path d="M9.5 18h5"></path><path d="m8 22 4-11 4 11"></path>',
+  'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path>',
+  'printer': '<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"></path><rect x="6" y="14" width="12" height="8" rx="1"></rect>',
+  'camera': '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"></path><circle cx="12" cy="13" r="3"></circle>',
+  'alert-triangle': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path>',
+};
+
+/** Um ícone inline, com os atributos que o lucide lhes punha. */
+function icone(nome, classes) {
+  const desenho = ICONES[nome];
+  if (!desenho) { console.warn(`[iga] o ícone "${nome}" não está no mapa ICONES.`); return ''; }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"`
+    + ` stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`
+    + ` class="${classes}">${desenho}</svg>`;
+}
 
 function esc(v) {
   if (v === null || v === undefined) return '';
@@ -161,82 +276,477 @@ async function pedir(caminho) {
   return corpo;
 }
 
-function mostrarErro(titulo, detalhe) {
+/**
+ * Rótulo do botão e nome acessível ao mesmo tempo.
+ *
+ * São quatro botões com o mesmo texto visível, um por cartão: quem os ouve numa
+ * lista precisa de saber qual é qual, e o nome acessível tem de acompanhar a
+ * mudança para "A tentar…" — senão o leitor de ecrã continuava a anunciar
+ * "Tentar novamente" num botão que já está desactivado.
+ */
+function rotular(botao, texto, tipo) {
+  botao.textContent = texto;
+  botao.setAttribute('aria-label', `${texto} — ${tipo.nome}`);
+}
+/**
+ * O ecrã de paragem — e o `conta` é a razão de ele ter três linhas em vez de
+ * duas.
+ *
+ * Quem cá chega sem acesso vai ter de pedir a alguém que o dê, e a primeira
+ * coisa que lhe perguntam do outro lado é "qual é a conta?". A página sabe-a e
+ * até aqui deitava-a fora, obrigando a pessoa a descobrir o próprio username
+ * para poder abrir um pedido.
+ */
+function mostrarErro(titulo, detalhe, conta, recarregar) {
+  bloqueada = true;
   document.getElementById('erroTitulo').textContent = titulo;
   document.getElementById('erroDetalhe').textContent = detalhe || '';
-  document.getElementById('ecraErro').classList.remove('hidden');
-}
 
-/** Um número com o seu rótulo, para o corpo do cartão. */
-function contagem(rotulo, valor, cor) {
-  return `<div>
-    <p class="text-lg font-extrabold ${cor || 'text-slate-800'}">${valor === undefined || valor === null ? '—' : esc(valor)}</p>
-    <p class="text-[11px] text-slate-500">${esc(rotulo)}</p>
-  </div>`;
+  const linhaConta = document.getElementById('erroConta');
+  linhaConta.innerHTML = conta
+    ? `Indique esta conta ao pedir o acesso:<span id="contaValor" class="block mt-1 font-mono text-sm font-bold text-slate-900 select-all">${esc(conta)}</span>`
+    : '';
+  linhaConta.classList.toggle('hidden', !conta);
+
+  // Cada botão só aparece quando tem o que fazer: copiar exige uma conta, o
+  // email exige também um destino (ver EMAIL_NSIC), e voltar a carregar só faz
+  // sentido no que é transitório — numa falta de grupo, recarregar dava
+  // exactamente o mesmo ecrã e ensinava que o botão não serve para nada.
+  const copiar = document.getElementById('botaoCopiar');
+  const pedir = document.getElementById('botaoPedir');
+  const recarga = document.getElementById('botaoRecarregar');
+
+  copiar.classList.toggle('hidden', !conta);
+  const podePedir = !!(conta && EMAIL_NSIC);
+  pedir.classList.toggle('hidden', !podePedir);
+  if (podePedir) {
+    const assunto = `Pedido de acesso ao IGA — ${conta}`;
+    const corpo = `Peço a inclusão da conta ${conta} no grupo "IGA" (registo e consulta)`
+      + ` ou "IGA-Consulta" (apenas consulta).`;
+    pedir.href = `mailto:${EMAIL_NSIC}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+  }
+  recarga.classList.toggle('hidden', !recarregar);
+  document.getElementById('erroAccoes').classList.toggle('hidden', !conta && !recarregar);
+
+  document.getElementById('conteudo').classList.add('hidden');
+  document.getElementById('ecraErro').classList.remove('hidden');
+
+  // O foco vai para o primeiro botão — ou para o cartão, quando não há nenhum.
+  // Sem isto ficava no `<body>`, atrás de uma cortina opaca, e o Tab não
+  // chegava a nada.
+  const primeiro = document.querySelector('#erroAccoes > :not(.hidden)');
+  (primeiro || document.getElementById('erroCartao')).focus();
 }
 
 /**
- * O cartão de um tipo. As contagens são um extra: se a API desse tipo falhar —
- * a base dos telemóveis é outra e pode estar em baixo sozinha — o cartão aparece
- * na mesma, com o aviso, porque o que ele serve é abrir a página.
+ * Copiar a conta, com a rede da intranet em mente.
+ *
+ * `navigator.clipboard` só existe em contexto seguro e o módulo na intranet é
+ * servido por http: aqui o caminho normal é o segundo, o `execCommand` antigo.
+ * Falhando os dois, a conta fica pelo menos SELECCIONADA — que é o que faz um
+ * Ctrl+C funcionar — e o botão diz isso. Nunca deixa a pessoa sem saída.
  */
-function cartao(tipo, e, aviso) {
-  return `<a href="${tipo.pagina}"
-     class="block bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-blue-400 hover:shadow-md transition group">
-    <div class="flex items-start justify-between gap-3 mb-4">
-      <div class="flex items-center gap-3">
-        <span class="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-blue-50 group-hover:text-blue-600 transition">
-          <i data-lucide="${tipo.icone}" class="w-5 h-5"></i>
-        </span>
-        <div>
-          <h3 class="font-extrabold text-slate-900">${esc(tipo.nome)}</h3>
-          <p class="text-xs text-slate-500">${esc(tipo.descricao)}</p>
-        </div>
-      </div>
-      <span class="text-3xl font-extrabold text-slate-900">${e ? esc(e.total) : '—'}</span>
-    </div>
+async function copiarConta() {
+  const alvo = document.getElementById('contaValor');
+  if (!alvo) return;
+  const botao = document.getElementById('botaoCopiar');
+  let copiado = false;
 
-    <div class="grid ${GRELHA_CONTAGENS[tipo.contagens.length] || 'grid-cols-4'} gap-2 pt-4 border-t border-slate-100">
-      ${tipo.contagens.map(c => contagem(c.rotulo, e && e[c.campo], c.cor)).join('')}
-    </div>
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(alvo.textContent);
+      copiado = true;
+    }
+  } catch (e) { /* negado ou indisponível: segue para o caminho antigo */ }
 
-    ${aviso ? `<p class="mt-4 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">${esc(aviso)}</p>` : ''}
-  </a>`;
+  if (!copiado) {
+    const seleccao = window.getSelection();
+    const intervalo = document.createRange();
+    intervalo.selectNodeContents(alvo);
+    seleccao.removeAllRanges();
+    seleccao.addRange(intervalo);
+    try { copiado = document.execCommand('copy'); } catch (e) { copiado = false; }
+  }
+
+  // Só o texto visível muda; o `aria-label` fica quieto de propósito (ver o
+  // comentário no botão).
+  botao.textContent = copiado ? 'Conta copiada' : 'Seleccionada — Ctrl+C';
+  clearTimeout(botao.temporizador);
+  botao.temporizador = setTimeout(() => { botao.textContent = 'Copiar conta'; }, 2500);
 }
 
-async function arrancar() {
-  let permissoes;
-  try {
-    permissoes = await pedir('/permissoes');
-  } catch (err) {
-    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+// ─── Frescura das contagens ────────────────────────────────
+
+function doisDigitos(n) { return String(n).padStart(2, '0'); }
+
+/** Dias inteiros entre a data do carimbo e hoje — datas civis dos dois lados. */
+function diasDesde(d) {
+  const carimbo = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const agora = new Date();
+  const hoje = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  return Math.round((hoje - carimbo) / 86400000);
+}
+
+/**
+ * Quando é que estes números foram importados pela última vez.
+ *
+ * "Última importação" e não "actualizado": o carimbo é da corrida do importador,
+ * não da última alteração — o que se muda pelo ecrã não passa por aqui. Dizer
+ * "actualizado" era prometer uma coisa que este valor não sabe.
+ *
+ * Lido em UTC como nas outras páginas: o `executado_em` é um DATETIME escrito
+ * com `GETDATE()` (hora de parede do servidor, sem fuso nenhum) e o driver
+ * devolve-o marcado como UTC. Ler as componentes UTC repõe a hora que lá está;
+ * ler as locais fazia-a saltar em qualquer fuso a oeste de Lisboa.
+ */
+function frescura(e) {
+  const v = e && e.ultima_importacao;
+  const d = v ? new Date(v) : null;
+  if (!d || isNaN(d)) return { texto: 'Sem registo de importação', velha: false };
+
+  const hh = doisDigitos(d.getUTCHours());
+  const mm = doisDigitos(d.getUTCMinutes());
+  const dia = `${doisDigitos(d.getUTCDate())}/${doisDigitos(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  const dias = diasDesde(d);
+
+  let quando;
+  if (dias < 0) quando = dia;                        // relógios desencontrados
+  else if (dias === 0) quando = `hoje, ${hh}:${mm}`;
+  else if (dias === 1) quando = `ontem, ${hh}:${mm}`;
+  else if (dias < 60) quando = `há ${dias} dias`;
+  else quando = `há ${Math.round(dias / 30)} meses`;
+
+  return {
+    texto: `Última importação: ${quando}`,
+    titulo: `${dia} às ${hh}:${mm}`,
+    // Data e hora locais, sem `Z`: o carimbo é hora de parede e não um instante
+    // em UTC — pôr-lhe fuso era afirmar uma precisão que ele não tem.
+    iso: `${d.getUTCFullYear()}-${doisDigitos(d.getUTCMonth() + 1)}-${doisDigitos(d.getUTCDate())}T${hh}:${mm}`,
+    velha: dias >= DIAS_ATE_AVISAR,
+  };
+}
+
+function linhaFrescura(e) {
+  const f = frescura(e);
+  if (!f.iso) return { html: esc(f.texto), classe: 'text-slate-500' };
+  const marca = `<time datetime="${esc(f.iso)}" title="${esc(f.titulo)}">${esc(f.texto)}</time>`;
+  if (!f.velha) return { html: marca, classe: 'text-slate-500' };
+  return {
+    html: `${icone('alert-triangle', 'w-3.5 h-3.5 shrink-0')}${marca}`,
+    classe: 'text-amber-700 font-semibold',
+  };
+}
+
+// ─── Desenho do cartão ─────────────────────────────────────
+
+/** O bloco cinzento que ocupa o lugar de um valor enquanto ele não chega. */
+function esqueleto(medidas) {
+  return `<span class="inline-block align-middle rounded bg-slate-200 animate-pulse ${medidas}"></span>`;
+}
+
+const CLASSE_CONTAGEM = 'text-lg font-extrabold';
+/**
+ * O tamanho da contagem em destaque.
+ *
+ * `leading-7` iguala a caixa de linha à da contagem normal (as duas ficam com
+ * 28px), senão o número maior empurrava o rótulo por baixo dele e os quatro
+ * rótulos da linha deixavam de alinhar. Os algarismos não têm descendentes,
+ * portanto 24px numa caixa de 28 não corta nada.
+ */
+const CLASSE_CONTAGEM_DESTAQUE = 'text-2xl leading-7 font-extrabold';
+const CLASSE_NOTAS = 'text-[11px] text-slate-600';
+const CLASSE_FRESCURA = 'text-[11px] flex items-center gap-1.5';
+
+/**
+ * A cor de uma contagem — e é aqui que vive a regra do âmbar.
+ *
+ * `alerta` diz que o campo CONTA um problema, não que ele exista: quem decide a
+ * cor é o valor. Amarrada ao campo, a cor punha um `0` âmbar permanente no
+ * cartão das impressoras — cor de aviso em cima da boa notícia — e um aviso que
+ * está sempre aceso ensina a não olhar para ele. Zero avarias e zero máquinas
+ * sem morada dizem-se em cinzento, como qualquer outro número sossegado.
+ */
+/**
+ * O tamanho de uma contagem — `destaque` marca a que responde à pergunta com
+ * que se chega a esta página.
+ *
+ * O total em cima é o número que nunca muda; o que se vem cá saber é se há
+ * equipamento para entregar. Estavam os dois na mesma linha e o decisivo era o
+ * mais pequeno. `destaque` não o tira da partição (continua a somar ao total,
+ * ao lado dos outros): só lhe dá o peso que a pergunta tem.
+ *
+ * As impressoras não levam nenhum de propósito — não se entregam a ninguém, e
+ * "instaladas" ao pé de um total igual não responde a pergunta nenhuma.
+ */
+function classeContagem(c) {
+  return c.destaque ? CLASSE_CONTAGEM_DESTAQUE : CLASSE_CONTAGEM;
+}
+
+function tomDaContagem(c, valor) {
+  if (c.alerta) return typeof valor === 'number' && valor > 0 ? 'text-amber-700' : 'text-slate-600';
+  return c.cor || 'text-slate-800';
+}
+
+/**
+ * A legenda: o que se sabe do tipo e não é parcela do total.
+ *
+ * Vai numa linha só, separada por pontos médios, deliberadamente mais pequena
+ * que a partição — porque a pergunta que a linha de cima responde ("de que é
+ * feito este total?") não é a que estes números respondem.
+ */
+function linhaNotas(tipo, e) {
+  if (!tipo.notas || !tipo.notas.length) return '';
+  return tipo.notas.map(n => {
+    const valor = e ? e[n.campo] : undefined;
+    if (valor === undefined) console.warn(`[iga] ${tipo.api}/estatisticas não trouxe "${n.campo}" — a legenda mostra "—".`);
+    const texto = esc(`${valor === undefined || valor === null ? '—' : valor} ${n.rotulo}`);
+    return n.alerta && typeof valor === 'number' && valor > 0
+      ? `<span class="text-amber-700 font-semibold">${texto}</span>`
+      : texto;
+  }).join(' · ');
+}
+
+/**
+ * O cartão de um tipo, desenhado ANTES de haver contagens nenhumas.
+ *
+ * O que ele serve é abrir a página, e isso não depende de pedido nenhum: os
+ * quatro aparecem à primeira pintura com esqueletos no lugar dos números e
+ * `aria-busy`, e cada um preenche-se quando o SEU `/estatisticas` responder. Um
+ * tipo lento — a base dos telemóveis é outra e pode estar em baixo sozinha, o
+ * que falha por timeout e não depressa — já não deixa o ecrã em branco a fingir
+ * que não há equipamento, nem segura os outros três.
+ *
+ * O aviso de falha fica FORA do `<a>`: um botão dentro de uma âncora não é HTML
+ * válido, e o clique navegava em vez de tentar outra vez.
+ */
+function cartao(tipo) {
+  return `<div data-tipo="${esc(tipo.chave)}" aria-busy="true" class="flex flex-col">
+    <a href="${tipo.pagina}" aria-label="${esc(tipo.nome)}"
+       class="flex-1 block bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-blue-400 hover:shadow-md transition group
+              focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div class="flex items-center gap-3">
+          <span class="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-blue-50 group-hover:text-blue-600 transition">
+            ${icone(tipo.icone, 'w-5 h-5')}
+          </span>
+          <!-- Duas linhas reservadas a partir do xl, que é onde os cartões
+               passam a quatro por linha e ficam com 296px: aí "Máquina
+               Fotográfica" quebra em duas e empurrava a linha dos números
+               desse cartão 24px abaixo das dos outros três. Reservar a altura
+               alinha as quatro em qualquer largura, e o nome por extenso fica
+               como está — é o que os ecrãs mostram. -->
+          <div class="xl:min-h-[64px]">
+            <h3 class="font-extrabold text-slate-900">${esc(tipo.nome)}</h3>
+            <p class="text-xs text-slate-500">${esc(tipo.descricao)}</p>
+          </div>
+        </div>
+        <span class="text-3xl font-extrabold text-slate-900"><span data-total>${esqueleto('h-7 w-16')}</span><span class="sr-only"> no total</span></span>
+      </div>
+
+      <div class="grid ${GRELHA_CONTAGENS[tipo.contagens.length] || 'grid-cols-4'} gap-2 pt-4 border-t border-slate-100">
+        ${tipo.contagens.map(c => `<div>
+          <p data-contagem="${esc(c.campo)}" class="${classeContagem(c)} ${tomDaContagem(c)}">${esqueleto('h-4 w-8')}</p>
+          <p class="text-[11px] text-slate-500">${esc(c.rotulo)}</p>
+        </div>`).join('')}
+      </div>
+
+      <div class="mt-4 space-y-1">
+        <p data-notas class="${CLASSE_NOTAS}${tipo.notas ? '' : ' hidden'}">${tipo.notas ? esqueleto('h-3 w-28') : ''}</p>
+        <p data-frescura class="${CLASSE_FRESCURA} text-slate-500">${esqueleto('h-3 w-36')}</p>
+      </div>
+    </a>
+
+    <!-- Sem quebra de fila, e a mensagem curta, porque a altura desta tira sai
+         da grelha inteira: o wrapper é um item de grelha que estica com a linha,
+         portanto o que aqui cresce cresce nos outros três cartões em branco.
+         Com o botão a cair para uma segunda fila e a frase a partir-se em duas
+         linhas, uma base de dados em baixo engordava a linha toda em 59px e
+         deixava 101px de branco no cartão dos rádios — o tabuleiro inteiro a
+         parecer avariado por causa de um tipo, que é exactamente o contrário do
+         que a frase ao lado promete. -->
+    <div data-falha class="hidden mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex flex-nowrap items-center justify-between gap-2">
+      <p class="text-xs font-semibold text-amber-800">Contagens de ${esc(tipo.nome)} indisponíveis.</p>
+      <!-- O nome acessível leva o tipo: numa lista de botões havia quatro
+           "Tentar novamente" iguais e nada a dizer qual era qual. Começa pelo
+           texto visível, para o comando de voz continuar a acertar nele.
+           (Sem plicas invertidas neste comentário: está dentro do literal de
+           template do cartão, e cada uma delas fecharia a string.) -->
+      <button type="button" data-retentar aria-label="Tentar novamente — ${esc(tipo.nome)}"
+              class="shrink-0 text-xs font-bold text-amber-900 bg-white border border-amber-600 rounded-md px-3 py-1.5 transition hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:opacity-60 disabled:cursor-not-allowed">
+        Tentar novamente
+      </button>
+    </div>
+  </div>`;
+}
+
+function cartaoDe(tipo) { return document.querySelector(`[data-tipo="${tipo.chave}"]`); }
+
+/** Repõe o cartão em "a carregar" — na primeira ida e em cada nova tentativa. */
+function porAEsperar(tipo) {
+  const raiz = cartaoDe(tipo);
+  raiz.setAttribute('aria-busy', 'true');
+  raiz.querySelector('[data-total]').innerHTML = esqueleto('h-7 w-16');
+  for (const c of tipo.contagens) {
+    const alvo = raiz.querySelector(`[data-contagem="${c.campo}"]`);
+    alvo.className = `${classeContagem(c)} ${tomDaContagem(c)}`;
+    alvo.innerHTML = esqueleto('h-4 w-8');
   }
-  if (!permissoes.canView) {
-    return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
-      'Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
+  const notas = raiz.querySelector('[data-notas]');
+  notas.className = tipo.notas ? CLASSE_NOTAS : `${CLASSE_NOTAS} hidden`;
+  notas.innerHTML = tipo.notas ? esqueleto('h-3 w-28') : '';
+  const linha = raiz.querySelector('[data-frescura]');
+  linha.className = `${CLASSE_FRESCURA} text-slate-500`;
+  linha.innerHTML = esqueleto('h-3 w-36');
+}
+
+function aplicarEstatisticas(tipo, e) {
+  if (bloqueada) return;
+  const raiz = cartaoDe(tipo);
+  raiz.querySelector('[data-total]').textContent =
+    e && e.total !== undefined && e.total !== null ? String(e.total) : '—';
+
+  for (const c of tipo.contagens) {
+    const valor = e ? e[c.campo] : undefined;
+    // Um campo que a API deixasse de mandar ficava a mostrar "— entregues" para
+    // sempre, calado. Aqui não se inventa nada, mas diz-se a quem tem a consola
+    // aberta que o contrato mudou.
+    if (valor === undefined) console.warn(`[iga] ${tipo.api}/estatisticas não trouxe "${c.campo}" — o cartão mostra "—".`);
+    const alvo = raiz.querySelector(`[data-contagem="${c.campo}"]`);
+    alvo.className = `${classeContagem(c)} ${tomDaContagem(c, valor)}`;
+    alvo.textContent = valor === undefined || valor === null ? '—' : String(valor);
   }
 
-  document.getElementById('nomeUtilizador').textContent = permissoes.nome || permissoes.username || '—';
-  document.getElementById('etiquetaAcesso').textContent =
-    permissoes.canAdmin ? 'Administração' : permissoes.canEdit ? 'Escrita' : 'Só consulta';
+  const notas = raiz.querySelector('[data-notas]');
+  const htmlNotas = linhaNotas(tipo, e);
+  notas.className = htmlNotas ? CLASSE_NOTAS : `${CLASSE_NOTAS} hidden`;
+  notas.innerHTML = htmlNotas;
 
-  // Cada tipo por si: um que falhe não pode levar os outros atrás. As
-  // divergências da conferência NÃO aparecem aqui de propósito — a entrada só
-  // conta o parque; o trabalho por fazer vive na aba Conferência da página dos
-  // rádios, que é onde se resolve.
-  const cartoes = await Promise.all(TIPOS.map(async tipo => {
-    try {
-      const e = await pedir(tipo.api + '/estatisticas');
-      return cartao(tipo, e);
-    } catch (err) {
-      return cartao(tipo, null, `Não foi possível ler as contagens: ${err.message}`);
-    }
-  }));
+  const f = linhaFrescura(e);
+  const linha = raiz.querySelector('[data-frescura]');
+  linha.className = `${CLASSE_FRESCURA} ${f.classe}`;
+  linha.innerHTML = f.html;
 
-  document.getElementById('cartoes').innerHTML = cartoes.join('');
+  const tira = raiz.querySelector('[data-falha]');
+  tira.classList.add('hidden');
+  // Repor o botão ao escondê-lo: senão ficava "A tentar…" e desactivado à
+  // espera da próxima falha, que o abriria com o rótulo da tentativa anterior.
+  const botao = tira.querySelector('[data-retentar]');
+  botao.disabled = false;
+  rotular(botao, 'Tentar novamente', tipo);
+  raiz.setAttribute('aria-busy', 'false');
+}
+
+/**
+ * O que se mostra quando o `/estatisticas` de um tipo falha.
+ *
+ * Mensagem fixa, e diz a única coisa útil: as contagens faltam, a página abre na
+ * mesma. O motivo técnico fica no console — a quem só quer saber onde está o
+ * rádio 553, "Erro ao obter as estatísticas dos telemóveis" não diz nada, e no
+ * dia em que um proxy responda por cima do servidor era o nome da base a
+ * aparecer no cartão.
+ */
+function aplicarFalha(tipo, err) {
+  if (bloqueada) return;
+  console.warn(`[iga] ${tipo.api}/estatisticas falhou:`, (err && err.message) || err);
+
+  const raiz = cartaoDe(tipo);
+  raiz.querySelector('[data-total]').textContent = '—';
+  // A cor volta ao neutro, e TODAS voltam — não só as de alerta. Um travessão
+  // em âmbar, herdado das 29 avarias que estavam ali antes da falha, avisava de
+  // uma coisa que já ninguém sabe se é verdade; um travessão em verde debaixo
+  // de "disponíveis" dava a boa notícia pela mesma razão nenhuma, e em 24px,
+  // por ser a contagem em destaque. Não se sabe o valor: não se lhe dá cor.
+  for (const c of tipo.contagens) {
+    const alvo = raiz.querySelector(`[data-contagem="${c.campo}"]`);
+    alvo.className = `${classeContagem(c)} text-slate-600`;
+    alvo.textContent = '—';
+  }
+
+  // A linha da frescura não diz "desconhecida" nem desaparece: passa a dizer a
+  // única coisa boa que há para dizer. É a metade tranquilizadora da notícia, e
+  // vive aqui em vez de na tira porque este espaço já existe em todos os
+  // cartões — a data ocupa-o quando há dados. Dito na tira, alongava-a, e a
+  // tira faz crescer a linha inteira da grelha. A tira fica com o problema e o
+  // botão; o cartão fica com a garantia.
+  const notas = raiz.querySelector('[data-notas]');
+  notas.className = `${CLASSE_NOTAS} hidden`;
+  notas.textContent = '';
+  const linha = raiz.querySelector('[data-frescura]');
+  linha.className = `${CLASSE_FRESCURA} text-slate-500`;
+  linha.textContent = 'A página abre na mesma.';
+
+  raiz.querySelector('[data-falha]').classList.remove('hidden');
+  const botao = raiz.querySelector('[data-retentar]');
+  botao.disabled = false;
+  rotular(botao, 'Tentar novamente', tipo);
+  raiz.setAttribute('aria-busy', 'false');
+}
+
+/** Um tipo, um pedido, um cartão. Nunca espera pelos outros nem os leva atrás. */
+function carregarEstatisticas(tipo) {
+  porAEsperar(tipo);
+  return pedir(tipo.api + '/estatisticas')
+    .then(e => aplicarEstatisticas(tipo, e))
+    .catch(err => aplicarFalha(tipo, err));
+}
+
+// ─── Arranque ──────────────────────────────────────────────
+
+function arrancar() {
+  document.getElementById('botaoCopiar').addEventListener('click', copiarConta);
+  document.getElementById('botaoRecarregar').addEventListener('click', () => location.reload());
+
+  const grelha = document.getElementById('cartoes');
+  grelha.innerHTML = TIPOS.map(cartao).join('');
   document.getElementById('rodape').textContent =
     `${TIPOS.length} tipos de equipamento · cada um com a sua página`;
-  if (window.lucide) lucide.createIcons();
+
+  grelha.addEventListener('click', ev => {
+    const botao = ev.target.closest('[data-retentar]');
+    if (!botao) return;
+    const tipo = TIPOS.find(t => t.chave === botao.closest('[data-tipo]').dataset.tipo);
+    if (!tipo) return;
+    // A tira do aviso fica no ecrã com o botão em espera: escondê-la aqui tirava
+    // do sítio a única prova de que houve segunda tentativa.
+    botao.disabled = true;
+    rotular(botao, 'A tentar…', tipo);
+    carregarEstatisticas(tipo);
+  });
+
+  // Tudo ao mesmo tempo. As contagens não precisam de saber quem está a ver —
+  // esperar pelo `/permissoes` era pôr duas idas ao servidor em fila para
+  // desenhar um ecrã que já está desenhado. As quatro promessas ficam tratadas
+  // aqui mesmo, para nenhuma ficar por apanhar se o gate recusar primeiro.
+  TIPOS.forEach(carregarEstatisticas);
+
+  pedir('/permissoes').then(permissoes => {
+    // Sem username não é falta de grupo: é a identificação de domínio que não
+    // chegou, e o caminho para o resolver é outro. Mostrar "Conta:" vazio e
+    // mandar pedir um grupo era encaminhar a pessoa para o sítio errado.
+    if (!permissoes.username) {
+      return mostrarErro('Não foi possível identificar a sua conta.',
+        'O acesso ao inventário é dado à conta de domínio, e esta sessão não trouxe nenhuma. '
+        + 'Se o problema se mantiver depois de voltar a carregar, contacte o NSIC.',
+        null, true);
+    }
+    if (!permissoes.canView) {
+      return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
+        'O acesso é dado por grupo. Solicite ao NSIC a inclusão no grupo "IGA" '
+        + '(registo e consulta) ou "IGA-Consulta" (apenas consulta).',
+        permissoes.username);
+    }
+    document.getElementById('nomeUtilizador').textContent = permissoes.nome || permissoes.username || '—';
+    document.getElementById('etiquetaAcesso').textContent =
+      permissoes.canAdmin ? 'Administração' : permissoes.canEdit ? 'Escrita' : 'Só consulta';
+  }).catch(err => {
+    // O motivo fica no console: a quem está à porta, "Erro 500" não abre nada, e
+    // o dia em que um proxy responda por cima do servidor era o nome da base a
+    // aparecer em ecrã inteiro a toda a gente com IGA-Consulta.
+    console.error('[iga] /permissoes falhou:', (err && err.message) || err);
+    mostrarErro('Não foi possível confirmar as permissões.',
+      'Se o problema se mantiver depois de voltar a carregar, contacte o NSIC.',
+      null, true);
+  });
 }
 
 arrancar();

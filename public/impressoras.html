@@ -48,11 +48,14 @@
     <span id="toastMsg"></span>
 </div>
 
-<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+<div id="ecraErro" role="alert" aria-atomic="true" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
     <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
-        <img src="/iga/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <img src="/iga/logo_transparente.png" width="390" height="192" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
         <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
-        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-600 leading-relaxed"></p>
+        <!-- A conta é para ser lida ao telefone ou copiada para um email: é o
+             único texto deste ecrã que tem de sair daqui exactamente como está. -->
+        <p id="erroConta" class="hidden text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2"></p>
     </div>
 </div>
 
@@ -60,10 +63,10 @@
 
     <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <a href="/iga.html" class="flex items-center gap-4 group" title="Voltar ao início">
-            <img src="/iga/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <img src="/iga/logo_transparente.png" width="390" height="192" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900 group-hover:text-blue-700 transition">Inventário e Gestão de Ativos
-                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-400">IGA</span>
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-600">IGA</span>
                 </h1>
                 <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
             </div>
@@ -72,7 +75,7 @@
             <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
                 Utilizador: <span id="nomeUtilizador">a carregar…</span>
             </span>
-            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-600"></span>
         </div>
     </header>
 
@@ -88,12 +91,12 @@
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <p class="text-xs text-slate-500 font-medium">Instaladas</p>
             <p id="kpiInstaladas" class="text-2xl font-extrabold text-blue-700">—</p>
-            <p class="text-[11px] text-slate-400 mt-0.5">com serviço registado</p>
+            <p class="text-xs text-slate-600 mt-0.5">com serviço registado</p>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <p class="text-xs text-slate-500 font-medium">Serviços</p>
             <p id="kpiLocais" class="text-2xl font-extrabold text-emerald-700">—</p>
-            <p class="text-[11px] text-slate-400 mt-0.5">sítios diferentes</p>
+            <p class="text-xs text-slate-600 mt-0.5">sítios diferentes</p>
         </div>
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <p class="text-xs text-slate-500 font-medium">Modelos</p>
@@ -102,7 +105,7 @@
         <button type="button" data-local="--sem--" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-amber-300 transition">
             <p class="text-xs text-slate-500 font-medium">Sem local</p>
             <p id="kpiSemLocal" class="text-2xl font-extrabold text-amber-700">—</p>
-            <p class="text-[11px] text-slate-400 mt-0.5">por atribuir a um serviço</p>
+            <p class="text-xs text-slate-600 mt-0.5">por atribuir a um serviço</p>
         </button>
     </section>
 
@@ -264,7 +267,7 @@ function enviar(caminho, dados, metodo) {
 
 function linhaCampo(rotulo, valor) {
   return `<div>
-    <dt class="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">${esc(rotulo)}</dt>
+    <dt class="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">${esc(rotulo)}</dt>
     <dd class="text-sm text-slate-800">${valor || '<span class="text-slate-300">—</span>'}</dd>
   </div>`;
 }
@@ -307,7 +310,7 @@ function desenhar() {
   const corpo = document.getElementById('tabela');
 
   if (!estado.impressoras.length) {
-    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">
+    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-600 text-sm">
       Nenhuma impressora encontrada com estes filtros.</td></tr>`;
     document.getElementById('rodape').textContent = '';
     return;
@@ -321,7 +324,7 @@ function desenhar() {
         : '<span class="text-amber-700 font-semibold">sem local</span>'}</td>
       <td class="px-3 py-2">
         <div class="text-slate-800">${esc(i.modelo || '—')}</div>
-        ${i.marca ? `<div class="text-[11px] text-slate-400">${esc(i.marca)}</div>` : ''}
+        ${i.marca ? `<div class="text-[11px] text-slate-600">${esc(i.marca)}</div>` : ''}
       </td>
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${i.num_serie ? esc(i.num_serie) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${i.ip ? esc(i.ip) : '<span class="text-slate-300">—</span>'}</td>
@@ -454,7 +457,7 @@ function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
     return `<div>
       <label for="c_${c.nome}" class="block text-xs font-semibold text-slate-600 mb-1">${esc(c.rotulo)}</label>
       ${controlo}
-      ${c.nota ? `<p class="text-[11px] text-slate-400 mt-1">${esc(c.nota)}</p>` : ''}
+      ${c.nota ? `<p class="text-xs text-slate-600 mt-1">${esc(c.nota)}</p>` : ''}
     </div>`;
   }).join('') + '<datalist id="listaLocais"></datalist>';
 
@@ -641,9 +644,28 @@ document.addEventListener('keydown', ev => {
 
 // ─── Arranque ──────────────────────────────────────────────
 
-function mostrarErro(titulo, detalhe) {
+/**
+ * O ecrã de paragem — o mesmo das outras páginas e do `iga.html`.
+ *
+ * A `conta` existe porque quem cá chega sem acesso vai ter de pedir a alguém que
+ * lho dê, e a primeira coisa que lhe perguntam do outro lado é "qual é a conta?".
+ * O `#app` esconde-se por baixo: a cortina é opaca, mas sem isto a página ficava
+ * toda navegável pelo Tab por trás dela.
+ */
+function mostrarErro(titulo, detalhe, conta) {
   document.getElementById('erroTitulo').textContent = titulo;
   document.getElementById('erroDetalhe').textContent = detalhe || '';
+  const linhaConta = document.getElementById('erroConta');
+  linhaConta.innerHTML = conta
+    ? `Indique esta conta ao pedir o acesso:<span class="block mt-1 font-mono text-sm font-bold text-slate-900 select-all">${esc(conta)}</span>`
+    : '';
+  linhaConta.classList.toggle('hidden', !conta);
+  document.getElementById('app').classList.add('hidden');
+  // O atalho "Saltar para o conteúdo" vive fora do #app: sem isto ficava a ser o
+  // único elemento tabulável com a cortina em cima, e a saltar para o que ela
+  // acabou de esconder.
+  const atalho = document.querySelector('a[href="#conteudo"]');
+  if (atalho) atalho.hidden = true;
   document.getElementById('ecraErro').classList.remove('hidden');
 }
 
@@ -651,11 +673,25 @@ async function arrancar() {
   try {
     estado.permissoes = await pedir('/permissoes', null, API_MODULO);
   } catch (err) {
-    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+    // O motivo fica no console: a quem está à porta, "Erro 500" não abre nada,
+    // e no dia em que um proxy responda por cima do servidor era o nome da base
+    // a aparecer em ecrã inteiro a toda a gente com IGA-Consulta.
+    console.error('[iga] /permissoes falhou:', (err && err.message) || err);
+    return mostrarErro('Não foi possível confirmar as permissões.',
+      'Volte a carregar a página. Se o problema se mantiver, contacte o NSIC.');
+  }
+  // Sem username não é falta de grupo: é a identificação de domínio que não
+  // chegou, e o caminho para o resolver é outro.
+  if (!estado.permissoes.username) {
+    return mostrarErro('Não foi possível identificar a sua conta.',
+      'O acesso ao inventário é dado à conta de domínio, e esta sessão não trouxe nenhuma. '
+      + 'Volte a carregar a página; se o problema se mantiver, contacte o NSIC.');
   }
   if (!estado.permissoes.canView) {
     return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
-      'Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
+      'O acesso é dado por grupo. Solicite ao NSIC a inclusão no grupo "IGA" '
+      + '(registo e consulta) ou "IGA-Consulta" (apenas consulta).',
+      estado.permissoes.username);
   }
 
   document.getElementById('nomeUtilizador').textContent =

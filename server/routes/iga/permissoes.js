@@ -149,6 +149,13 @@ async function permissoesDoRequest(req) {
   return out;
 }
 
+/** Escapa para o template abaixo, que é uma string e não um motor de templates. */
+function escHtml(v) {
+  return String(v === null || v === undefined ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 /** 401/403 negociado: JSON para /api e Accept:json; página institucional caso contrário. */
 function negar(req, res, status, message) {
   const wantsJson = String(req.originalUrl || '').startsWith('/api/')
@@ -160,9 +167,16 @@ function negar(req, res, status, message) {
     });
   }
   const titulo = status === 401 ? 'Não autenticado' : 'Acesso reservado';
+  // Esta é a página que quem não tem acesso vê de verdade — o `iga.html` nem
+  // chega a ser servido. A conta vai nela porque é a primeira coisa que o NSIC
+  // pergunta, e é a única que a pessoa não sabe de cor.
+  const conta = req.igaUser && req.igaUser.username;
+  const blocoConta = conta
+    ? `<p class="conta">Indique esta conta ao pedir o acesso:<br><code>${escHtml(conta)}</code></p>`
+    : '';
   res.status(status).type('html').send(`<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${titulo} · IGA</title>
-<style>body{font-family:'Hanken Grotesk',system-ui,Arial,sans-serif;background:#f1f5f9;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.box{background:#fff;border:1px solid #e2e8f0;padding:40px 48px;border-radius:16px;max-width:460px;text-align:center;box-shadow:0 20px 40px rgba(15,23,42,.08)}h1{font-size:22px;margin:0 0 12px;color:#0f172a}p{color:#64748b;line-height:1.55;margin:0 0 18px}a{color:#2563eb;text-decoration:none;font-weight:700}</style></head>
-<body><div class="box"><h1>${titulo}</h1><p>${message}</p><a href="/index2.html">← Voltar à Intranet</a></div></body></html>`);
+<style>body{font-family:'Hanken Grotesk',system-ui,Arial,sans-serif;background:#f1f5f9;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.box{background:#fff;border:1px solid #e2e8f0;padding:40px 48px;border-radius:16px;max-width:460px;text-align:center;box-shadow:0 20px 40px rgba(15,23,42,.08)}h1{font-size:22px;margin:0 0 12px;color:#0f172a}p{color:#475569;line-height:1.55;margin:0 0 18px}a{color:#2563eb;text-decoration:none;font-weight:700}.conta{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;font-size:13px}.conta code{display:block;margin-top:6px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:15px;font-weight:700;color:#0f172a;user-select:all}</style></head>
+<body><div class="box"><h1>${titulo}</h1><p>${escHtml(message)}</p>${blocoConta}<a href="/index2.html">← Voltar à Intranet</a></div></body></html>`);
 }
 
 /** Resolve as permissões uma vez por pedido e guarda-as em req.igaUser. */
@@ -182,9 +196,12 @@ async function permissoesDoPedido(req, res) {
 async function exigirAcesso(req, res, next) {
   const p = await permissoesDoPedido(req, res);
   if (!p) return;
-  if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
+  if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador. '
+    + 'Volte a carregar a página; se o problema se mantiver, contacte o NSIC.');
   if (!p.canView) {
-    return negar(req, res, 403, 'Acesso reservado ao Inventário e Gestão de Ativos. Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
+    return negar(req, res, 403, 'O acesso ao Inventário e Gestão de Ativos é dado por grupo. '
+      + 'Solicite ao NSIC a inclusão no grupo "IGA" (registo e consulta) '
+      + 'ou "IGA-Consulta" (apenas consulta).');
   }
   next();
 }
@@ -196,9 +213,11 @@ async function exigirAcesso(req, res, next) {
 async function exigirEdicao(req, res, next) {
   const p = await permissoesDoPedido(req, res);
   if (!p) return;
-  if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
+  if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador. '
+    + 'Volte a carregar a página; se o problema se mantiver, contacte o NSIC.');
   if (!p.canEdit) {
-    return negar(req, res, 403, 'O teu acesso é só de consulta — não podes registar nem editar rádios.');
+    return negar(req, res, 403, 'O seu acesso ao inventário é apenas de consulta. '
+      + 'Para registar ou alterar equipamento, solicite ao NSIC a inclusão no grupo "IGA".');
   }
   next();
 }
@@ -211,9 +230,11 @@ async function exigirEdicao(req, res, next) {
 async function exigirAdmin(req, res, next) {
   const p = await permissoesDoPedido(req, res);
   if (!p) return;
-  if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador.');
+  if (!p.username) return negar(req, res, 401, 'Não foi possível identificar o utilizador. '
+    + 'Volte a carregar a página; se o problema se mantiver, contacte o NSIC.');
   if (!p.canAdmin) {
-    return negar(req, res, 403, 'Esta operação é reservada ao grupo "IGA-Admin".');
+    return negar(req, res, 403, 'Esta operação é reservada ao grupo "IGA-Admin". '
+      + 'Solicite o acesso ao NSIC.');
   }
   next();
 }

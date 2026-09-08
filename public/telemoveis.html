@@ -48,11 +48,14 @@
     <span id="toastMsg"></span>
 </div>
 
-<div id="ecraErro" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+<div id="ecraErro" role="alert" aria-atomic="true" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
     <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
-        <img src="/iga/logo_transparente.png" width="512" height="252" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <img src="/iga/logo_transparente.png" width="390" height="192" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
         <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
-        <p id="erroDetalhe" class="text-xs text-slate-500"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-600 leading-relaxed"></p>
+        <!-- A conta é para ser lida ao telefone ou copiada para um email: é o
+             único texto deste ecrã que tem de sair daqui exactamente como está. -->
+        <p id="erroConta" class="hidden text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2"></p>
     </div>
 </div>
 
@@ -60,10 +63,10 @@
 
     <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <a href="/iga.html" class="flex items-center gap-4 group" title="Voltar ao início">
-            <img src="/iga/logo_transparente.png" width="512" height="252" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <img src="/iga/logo_transparente.png" width="390" height="192" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900 group-hover:text-blue-700 transition">Inventário e Gestão de Ativos
-                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-400">IGA</span>
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-600">IGA</span>
                 </h1>
                 <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
             </div>
@@ -72,7 +75,7 @@
             <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
                 Utilizador: <span id="nomeUtilizador">a carregar…</span>
             </span>
-            <span id="etiquetaAcesso" class="text-[11px] text-slate-400"></span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-600"></span>
         </div>
     </header>
 
@@ -102,7 +105,7 @@
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <p class="text-xs text-slate-500 font-medium">Sem cartão</p>
             <p id="kpiSemCartao" class="text-2xl font-extrabold text-slate-600">—</p>
-            <p class="text-[11px] text-slate-400 mt-0.5">de origem, não é erro</p>
+            <p class="text-xs text-slate-600 mt-0.5">de origem, não é erro</p>
         </div>
     </section>
 
@@ -270,7 +273,7 @@ function etiqueta(chave) {
 
 function linhaCampo(rotulo, valor) {
   return `<div>
-    <dt class="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">${esc(rotulo)}</dt>
+    <dt class="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">${esc(rotulo)}</dt>
     <dd class="text-sm text-slate-800">${valor || '<span class="text-slate-300">—</span>'}</dd>
   </div>`;
 }
@@ -291,7 +294,7 @@ function desenhar() {
   const corpo = document.getElementById('tabela');
 
   if (!estado.telemoveis.length) {
-    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">
+    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-600 text-sm">
       Nenhum telemóvel encontrado com estes filtros.</td></tr>`;
     document.getElementById('rodape').textContent = '';
     return;
@@ -299,7 +302,7 @@ function desenhar() {
 
   corpo.innerHTML = estado.telemoveis.map(t => {
     const entregue = t.matricula || t.nome_utilizador
-      ? `${esc(t.nome_utilizador || '—')}${t.matricula ? ` <span class="text-slate-400">· ${esc(t.matricula)}</span>` : ''}`
+      ? `${esc(t.nome_utilizador || '—')}${t.matricula ? ` <span class="text-slate-600">· ${esc(t.matricula)}</span>` : ''}`
       : '<span class="text-slate-300">—</span>';
     // A descrição da avaria NÃO vem para a tabela: são frases inteiras vindas do
     // ficheiro de origem ("Avaria no ecra não responde ao toque") e desalinhavam
@@ -309,7 +312,7 @@ function desenhar() {
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${t.imei1 ? esc(t.imei1) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2">
         <div class="text-slate-800">${esc(t.marca || '—')} <span class="text-slate-500">${esc(t.modelo || '')}</span></div>
-        ${t.localizacao ? `<div class="text-[11px] text-slate-400">${esc(t.localizacao)}</div>` : ''}
+        ${t.localizacao ? `<div class="text-[11px] text-slate-600">${esc(t.localizacao)}</div>` : ''}
       </td>
       <td class="px-3 py-2">${etiqueta(t.estado)}</td>
       <td class="px-3 py-2">${entregue}</td>
@@ -364,13 +367,13 @@ async function abrirDetalhe(id) {
       <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${a.data_devolucao ? 'bg-slate-300' : 'bg-blue-500'}"></span>
       <div class="text-sm">
         <div class="font-semibold text-slate-800">${esc(a.nome_utilizador || 'sem nome')}
-          ${a.matricula ? `<span class="text-slate-400 font-normal">· ${esc(a.matricula)}</span>` : ''}</div>
+          ${a.matricula ? `<span class="text-slate-600 font-normal">· ${esc(a.matricula)}</span>` : ''}</div>
         <div class="text-xs text-slate-500">
           ${dataPt(a.data_entrega)} → ${a.data_devolucao ? dataPt(a.data_devolucao) : '<span class="text-blue-600 font-semibold">ainda o tem</span>'}
         </div>
-        ${a.obs ? `<div class="text-xs text-slate-400 mt-0.5">${esc(a.obs)}</div>` : ''}
+        ${a.obs ? `<div class="text-xs text-slate-600 mt-0.5">${esc(a.obs)}</div>` : ''}
       </div>
-    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Nunca foi entregue.</li>';
+    </li>`).join('') : '<li class="text-sm text-slate-600 py-2">Nunca foi entregue.</li>';
 
   const avarias = t.avarias.length ? t.avarias.map(a => `
     <li class="flex gap-3 py-2 border-b border-slate-100 last:border-0">
@@ -384,7 +387,7 @@ async function abrirDetalhe(id) {
       </div>
       ${a.estado === 'aberta' && estado.permissoes.canEdit
         ? `<button class="text-xs font-semibold text-emerald-700 hover:underline" data-reparar="${a.id}">Fechar</button>` : ''}
-    </li>`).join('') : '<li class="text-sm text-slate-400 py-2">Sem avarias registadas.</li>';
+    </li>`).join('') : '<li class="text-sm text-slate-600 py-2">Sem avarias registadas.</li>';
 
   document.getElementById('painelCorpo').innerHTML = `
     <section>
@@ -408,7 +411,7 @@ async function abrirDetalhe(id) {
         ${estado.permissoes.canAdmin
           ? `<p class="text-xs text-slate-500 mb-2">PIN, PUK e conta do aparelho. A leitura fica registada no log.</p>
              <button id="btnCredenciais" class="text-xs font-semibold text-blue-600 hover:underline">Mostrar credenciais</button>`
-          : '<p class="text-sm text-slate-400">Reservado ao grupo IGA-Admin.</p>'}
+          : '<p class="text-sm text-slate-600">Reservado ao grupo IGA-Admin.</p>'}
       </div>
     </section>
 
@@ -473,7 +476,7 @@ function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
     return `<div>
       <label for="c_${c.nome}" class="block text-xs font-semibold text-slate-600 mb-1">${esc(c.rotulo)}</label>
       ${controlo}
-      ${c.nota ? `<p class="text-[11px] text-slate-400 mt-1">${esc(c.nota)}</p>` : ''}
+      ${c.nota ? `<p class="text-xs text-slate-600 mt-1">${esc(c.nota)}</p>` : ''}
     </div>`;
   }).join('') + '<datalist id="listaPessoas"></datalist>';
 
@@ -747,9 +750,28 @@ document.addEventListener('keydown', ev => {
 
 // ─── Arranque ──────────────────────────────────────────────
 
-function mostrarErro(titulo, detalhe) {
+/**
+ * O ecrã de paragem — o mesmo das outras páginas e do `iga.html`.
+ *
+ * A `conta` existe porque quem cá chega sem acesso vai ter de pedir a alguém que
+ * lho dê, e a primeira coisa que lhe perguntam do outro lado é "qual é a conta?".
+ * O `#app` esconde-se por baixo: a cortina é opaca, mas sem isto a página ficava
+ * toda navegável pelo Tab por trás dela.
+ */
+function mostrarErro(titulo, detalhe, conta) {
   document.getElementById('erroTitulo').textContent = titulo;
   document.getElementById('erroDetalhe').textContent = detalhe || '';
+  const linhaConta = document.getElementById('erroConta');
+  linhaConta.innerHTML = conta
+    ? `Indique esta conta ao pedir o acesso:<span class="block mt-1 font-mono text-sm font-bold text-slate-900 select-all">${esc(conta)}</span>`
+    : '';
+  linhaConta.classList.toggle('hidden', !conta);
+  document.getElementById('app').classList.add('hidden');
+  // O atalho "Saltar para o conteúdo" vive fora do #app: sem isto ficava a ser o
+  // único elemento tabulável com a cortina em cima, e a saltar para o que ela
+  // acabou de esconder.
+  const atalho = document.querySelector('a[href="#conteudo"]');
+  if (atalho) atalho.hidden = true;
   document.getElementById('ecraErro').classList.remove('hidden');
 }
 
@@ -757,11 +779,25 @@ async function arrancar() {
   try {
     estado.permissoes = await pedir('/permissoes', null, API_MODULO);
   } catch (err) {
-    return mostrarErro('Não foi possível confirmar as permissões.', err.message);
+    // O motivo fica no console: a quem está à porta, "Erro 500" não abre nada,
+    // e no dia em que um proxy responda por cima do servidor era o nome da base
+    // a aparecer em ecrã inteiro a toda a gente com IGA-Consulta.
+    console.error('[iga] /permissoes falhou:', (err && err.message) || err);
+    return mostrarErro('Não foi possível confirmar as permissões.',
+      'Volte a carregar a página. Se o problema se mantiver, contacte o NSIC.');
+  }
+  // Sem username não é falta de grupo: é a identificação de domínio que não
+  // chegou, e o caminho para o resolver é outro.
+  if (!estado.permissoes.username) {
+    return mostrarErro('Não foi possível identificar a sua conta.',
+      'O acesso ao inventário é dado à conta de domínio, e esta sessão não trouxe nenhuma. '
+      + 'Volte a carregar a página; se o problema se mantiver, contacte o NSIC.');
   }
   if (!estado.permissoes.canView) {
     return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
-      'Pede para te adicionarem ao grupo "IGA" (ou "IGA-Consulta" para consulta).');
+      'O acesso é dado por grupo. Solicite ao NSIC a inclusão no grupo "IGA" '
+      + '(registo e consulta) ou "IGA-Consulta" (apenas consulta).',
+      estado.permissoes.username);
   }
 
   document.getElementById('nomeUtilizador').textContent =

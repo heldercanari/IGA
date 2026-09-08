@@ -530,6 +530,17 @@ async function principal() {
           ELSE 'disponivel' END,
         atualizado_em = GETDATE()`);
 
+  // A corrida fica registada, como nos outros três importadores. A tabela existe
+  // desde a migração 001 e o `/estatisticas` já a lia — só ninguém lá escrevia,
+  // e por isso `ultima_importacao` era null nos rádios e só nos rádios. São três
+  // ficheiros e a coluna é uma: vão os três nomes, que é o que se quer ler no
+  // dia em que se for perceber donde saiu uma linha.
+  await pool.request()
+    .input('f', sql.NVarChar(400), [MASTER, ATRIBUIDOS, AVARIAS_CSV].map(f => path.basename(f)).join(' + '))
+    .input('r', sql.NVarChar(sql.MAX), JSON.stringify(resumo))
+    .input('por', sql.NVarChar(120), process.env.USERNAME || 'desconhecido')
+    .query('INSERT INTO dbo.radios_importacoes (ficheiro, resumo, executado_por) VALUES (@f, @r, @por)');
+
   const contagens = await pool.request().query(
     'SELECT estado, COUNT(*) AS total FROM dbo.radios GROUP BY estado ORDER BY estado');
 
