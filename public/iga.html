@@ -115,12 +115,15 @@ const API_MODULO = '/api/iga';
  * estados de um rádio somam 770; instaladas + sem local somam as 16
  * impressoras; entregues + disponíveis somam as 15 máquinas.
  *
- * **`notas` é o resto** — o que se sabe do tipo mas não é uma parte do total.
- * Os "serviços" e os "modelos" das impressoras contam sítios e modelos, não
- * impressoras (16 + 16 + 3 + 0 nunca deu 16); as "entregas sem data" das
- * máquinas são um subconjunto das entregues, não uma parcela ao lado delas.
- * Estavam os três na mesma linha, com o mesmo tamanho e o mesmo peso, a fingir
- * a mesma aritmética. Vão para uma legenda por baixo, que é o que são.
+ * **E é só isso que o cartão mostra.** Houve aqui uma legenda por baixo com o
+ * que se sabia do tipo sem ser parcela do total — os serviços e os modelos das
+ * impressoras, as entregas por datar das máquinas. Saiu a 2026-09-08: a entrada
+ * responde "quanto há e em que estado está", e o resto vê-se na página do tipo,
+ * que é onde se faz alguma coisa com ele. Um tipo novo não precisa de arranjar
+ * números para encher a linha de baixo — ela não existe.
+ *
+ * **Os rótulos levam maiúscula inicial** ("Entregues", "Sem local"): são
+ * etiquetas de um valor, não frases.
  *
  * `alerta` marca um campo que conta um problema. Não pinta nada por si: quem
  * decide a cor é o valor (ver `tomDaContagem`).
@@ -130,10 +133,10 @@ const API_MODULO = '/api/iga';
  * maior (ver `classeContagem`). Um tipo pode não ter nenhuma.
  */
 const CONTAGENS_PARQUE = [
-  { rotulo: 'entregues', campo: 'atribuidos', cor: 'text-blue-700' },
-  { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700', destaque: true },
-  { rotulo: 'avariados', campo: 'avariados', alerta: true },
-  { rotulo: 'abatidos', campo: 'abatidos', cor: 'text-slate-600' },
+  { rotulo: 'Entregues', campo: 'atribuidos', cor: 'text-blue-700' },
+  { rotulo: 'Disponíveis', campo: 'disponiveis', cor: 'text-emerald-700', destaque: true },
+  { rotulo: 'Avariados', campo: 'avariados', alerta: true },
+  { rotulo: 'Abatidos', campo: 'abatidos', cor: 'text-slate-600' },
 ];
 
 const TIPOS = [
@@ -166,12 +169,8 @@ const TIPOS = [
     // serviços e o módulo delas existe para saber onde cada uma está. A partição
     // é essa — com morada ou sem ela.
     contagens: [
-      { rotulo: 'instaladas', campo: 'com_local', cor: 'text-blue-700' },
-      { rotulo: 'sem local', campo: 'sem_local', alerta: true },
-    ],
-    notas: [
-      { rotulo: 'serviços', campo: 'locais' },
-      { rotulo: 'modelos', campo: 'modelos' },
+      { rotulo: 'Instaladas', campo: 'com_local', cor: 'text-blue-700' },
+      { rotulo: 'Sem local', campo: 'sem_local', alerta: true },
     ],
   },
   {
@@ -182,16 +181,13 @@ const TIPOS = [
     pagina: '/maquinas.html',
     api: '/maquinas',
     // Entregam-se a pessoas, mas não têm avarias nem abates (ver a migração
-    // 004): das quatro contagens do parque só duas fazem sentido, e essas duas
-    // são a partição. Os levantamentos que a folha não datou continuam à vista
-    // — em âmbar, quando existem — mas na legenda: são um subconjunto das
-    // entregues, não uma terceira parcela.
+    // 004): das quatro contagens do parque só duas fazem sentido, e são essas
+    // duas a partição. Os levantamentos que a folha não datou vêem-se na página
+    // das máquinas, no KPI "Sem data" e a âmbar na coluna Atribuído — aqui não,
+    // que são um subconjunto das entregues e não uma terceira parcela.
     contagens: [
-      { rotulo: 'entregues', campo: 'entregues', cor: 'text-blue-700' },
-      { rotulo: 'disponíveis', campo: 'disponiveis', cor: 'text-emerald-700', destaque: true },
-    ],
-    notas: [
-      { rotulo: 'entregas sem data', campo: 'entregas_sem_data', alerta: true },
+      { rotulo: 'Entregues', campo: 'entregues', cor: 'text-blue-700' },
+      { rotulo: 'Disponíveis', campo: 'disponiveis', cor: 'text-emerald-700', destaque: true },
     ],
   },
 ];
@@ -205,17 +201,6 @@ const TIPOS = [
  * mesmo para as medidas dos esqueletos, escritas literalmente nas chamadas.
  */
 const GRELHA_CONTAGENS = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
-
-/**
- * A partir de quantos dias a última importação passa a ser dita em âmbar.
- *
- * As importações correm à mão, quando chega ficheiro novo — não há agendamento
- * nenhum, portanto isto não é um prazo falhado: é o ponto a partir do qual vale
- * a pena avisar quem lê os números de que podem já não bater certo com as folhas
- * de origem. O âmbar sai do VALOR e não do campo — um cartão importado ontem diz
- * a mesma coisa em cinzento. Âmbar permanente ensina a ignorar o âmbar.
- */
-const DIAS_ATE_AVISAR = 30;
 
 /** Depois de o ecrã de erro subir, nada mais escreve por baixo dele. */
 let bloqueada = false;
@@ -376,68 +361,6 @@ async function copiarConta() {
   botao.temporizador = setTimeout(() => { botao.textContent = 'Copiar conta'; }, 2500);
 }
 
-// ─── Frescura das contagens ────────────────────────────────
-
-function doisDigitos(n) { return String(n).padStart(2, '0'); }
-
-/** Dias inteiros entre a data do carimbo e hoje — datas civis dos dois lados. */
-function diasDesde(d) {
-  const carimbo = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const agora = new Date();
-  const hoje = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  return Math.round((hoje - carimbo) / 86400000);
-}
-
-/**
- * Quando é que estes números foram importados pela última vez.
- *
- * "Última importação" e não "actualizado": o carimbo é da corrida do importador,
- * não da última alteração — o que se muda pelo ecrã não passa por aqui. Dizer
- * "actualizado" era prometer uma coisa que este valor não sabe.
- *
- * Lido em UTC como nas outras páginas: o `executado_em` é um DATETIME escrito
- * com `GETDATE()` (hora de parede do servidor, sem fuso nenhum) e o driver
- * devolve-o marcado como UTC. Ler as componentes UTC repõe a hora que lá está;
- * ler as locais fazia-a saltar em qualquer fuso a oeste de Lisboa.
- */
-function frescura(e) {
-  const v = e && e.ultima_importacao;
-  const d = v ? new Date(v) : null;
-  if (!d || isNaN(d)) return { texto: 'Sem registo de importação', velha: false };
-
-  const hh = doisDigitos(d.getUTCHours());
-  const mm = doisDigitos(d.getUTCMinutes());
-  const dia = `${doisDigitos(d.getUTCDate())}/${doisDigitos(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
-  const dias = diasDesde(d);
-
-  let quando;
-  if (dias < 0) quando = dia;                        // relógios desencontrados
-  else if (dias === 0) quando = `hoje, ${hh}:${mm}`;
-  else if (dias === 1) quando = `ontem, ${hh}:${mm}`;
-  else if (dias < 60) quando = `há ${dias} dias`;
-  else quando = `há ${Math.round(dias / 30)} meses`;
-
-  return {
-    texto: `Última importação: ${quando}`,
-    titulo: `${dia} às ${hh}:${mm}`,
-    // Data e hora locais, sem `Z`: o carimbo é hora de parede e não um instante
-    // em UTC — pôr-lhe fuso era afirmar uma precisão que ele não tem.
-    iso: `${d.getUTCFullYear()}-${doisDigitos(d.getUTCMonth() + 1)}-${doisDigitos(d.getUTCDate())}T${hh}:${mm}`,
-    velha: dias >= DIAS_ATE_AVISAR,
-  };
-}
-
-function linhaFrescura(e) {
-  const f = frescura(e);
-  if (!f.iso) return { html: esc(f.texto), classe: 'text-slate-500' };
-  const marca = `<time datetime="${esc(f.iso)}" title="${esc(f.titulo)}">${esc(f.texto)}</time>`;
-  if (!f.velha) return { html: marca, classe: 'text-slate-500' };
-  return {
-    html: `${icone('alert-triangle', 'w-3.5 h-3.5 shrink-0')}${marca}`,
-    classe: 'text-amber-700 font-semibold',
-  };
-}
-
 // ─── Desenho do cartão ─────────────────────────────────────
 
 /** O bloco cinzento que ocupa o lugar de um valor enquanto ele não chega. */
@@ -455,12 +378,11 @@ const CLASSE_CONTAGEM = 'text-lg font-extrabold';
  * portanto 24px numa caixa de 28 não corta nada.
  */
 const CLASSE_CONTAGEM_DESTAQUE = 'text-2xl leading-7 font-extrabold';
-// A legenda é mais clara que os rótulos da partição, e não o contrário. Estava
-// em `slate-600` (7,58:1) debaixo de rótulos em `slate-500` (4,76:1) — o texto
-// subordinado mais escuro do que aquilo a que se subordina, que é a hierarquia
-// ao contrário. Os dois continuam acima de AA; troca-se qual deles é o forte.
-const CLASSE_NOTAS = 'text-[11px] text-slate-500';
-const CLASSE_FRESCURA = 'text-[11px] flex items-center gap-1.5 min-w-0';
+// A fila de baixo do cartão. Teve o carimbo da última importação até 2026-09-08,
+// quando ele saiu por desnecessário: quem lê o cartão quer o parque, não a
+// contabilidade das corridas do importador. A fila fica — é onde vive o galão e,
+// quando a API falha, a frase que garante que a página abre na mesma.
+const CLASSE_RODAPE = 'text-[11px] flex items-center gap-1.5 min-w-0';
 
 /**
  * A cor de uma contagem — e é aqui que vive a regra do âmbar.
@@ -490,25 +412,6 @@ function classeContagem(c) {
 function tomDaContagem(c, valor) {
   if (c.alerta) return typeof valor === 'number' && valor > 0 ? 'text-amber-700' : 'text-slate-600';
   return c.cor || 'text-slate-800';
-}
-
-/**
- * A legenda: o que se sabe do tipo e não é parcela do total.
- *
- * Vai numa linha só, separada por pontos médios, deliberadamente mais pequena
- * que a partição — porque a pergunta que a linha de cima responde ("de que é
- * feito este total?") não é a que estes números respondem.
- */
-function linhaNotas(tipo, e) {
-  if (!tipo.notas || !tipo.notas.length) return '';
-  return tipo.notas.map(n => {
-    const valor = e ? e[n.campo] : undefined;
-    if (valor === undefined) console.warn(`[iga] ${tipo.api}/estatisticas não trouxe "${n.campo}" — a legenda mostra "—".`);
-    const texto = esc(`${valor === undefined || valor === null ? '—' : valor} ${n.rotulo}`);
-    return n.alerta && typeof valor === 'number' && valor > 0
-      ? `<span class="text-amber-700 font-semibold">${texto}</span>`
-      : texto;
-  }).join(' · ');
 }
 
 /**
@@ -555,22 +458,23 @@ function cartao(tipo) {
         </div>`).join('')}
       </div>
 
-      <div class="mt-4 space-y-1">
-        <p data-notas class="${CLASSE_NOTAS}${tipo.notas ? '' : ' hidden'}">${tipo.notas ? esqueleto('h-3 w-28') : ''}</p>
-        <!-- O galão vai na fila da frescura, e não numa linha só dele, porque
-             essa fila existe em todos os cartões desde a primeira pintura: aqui
-             não custa altura nenhuma, e a altura deste cartão é a altura da
-             linha inteira da grelha.
-
-             Existe porque, parado, nada dizia que o cartão se abre — o azul da
-             borda e o do ícone só apareciam com o rato em cima, e esta é a
-             ÚNICA passagem entre os quatro inventários (as páginas de
+      <div class="mt-4">
+        <!-- O galão existe porque, parado, nada dizia que o cartão se abre — o
+             azul da borda e o do ícone só apareciam com o rato em cima, e esta é
+             a ÚNICA passagem entre os quatro inventários (as páginas de
              equipamento não têm navegação entre tipos). Quem lesse os números
              sem passar o rato não tinha como saber que a página ia a algum
              lado. Em cinzento parado e azul com o rato em cima: a seta é o
-             sinal, o azul é a resposta. -->
+             sinal, o azul é a resposta.
+
+             Divide a fila com o data-rodape, que está vazio enquanto corre tudo
+             bem e só fala quando o /estatisticas falha. É justify-between e não
+             justify-end para o galão não saltar de sítio quando a frase aparece
+             ao lado dele. (Sem plicas invertidas neste comentário, como no de
+             baixo: está dentro do literal de template do cartão, e cada uma
+             delas fecharia a string.) -->
         <div class="flex items-center justify-between gap-2">
-          <p data-frescura class="${CLASSE_FRESCURA} text-slate-500">${esqueleto('h-3 w-36')}</p>
+          <p data-rodape class="${CLASSE_RODAPE} text-slate-500"></p>
           <span class="shrink-0 text-slate-500 group-hover:text-blue-700 transition">${icone('chevron-right', 'w-4 h-4')}</span>
         </div>
       </div>
@@ -611,12 +515,11 @@ function porAEsperar(tipo) {
     alvo.className = `${classeContagem(c)} ${tomDaContagem(c)}`;
     alvo.innerHTML = esqueleto('h-4 w-8');
   }
-  const notas = raiz.querySelector('[data-notas]');
-  notas.className = tipo.notas ? CLASSE_NOTAS : `${CLASSE_NOTAS} hidden`;
-  notas.innerHTML = tipo.notas ? esqueleto('h-3 w-28') : '';
-  const linha = raiz.querySelector('[data-frescura]');
-  linha.className = `${CLASSE_FRESCURA} text-slate-500`;
-  linha.innerHTML = esqueleto('h-3 w-36');
+  // O rodapé só fala quando há falha: a esperar, fica calado em vez de mostrar
+  // um esqueleto que nunca se enche.
+  const rodape = raiz.querySelector('[data-rodape]');
+  rodape.className = `${CLASSE_RODAPE} text-slate-500`;
+  rodape.textContent = '';
 }
 
 function aplicarEstatisticas(tipo, e) {
@@ -636,15 +539,11 @@ function aplicarEstatisticas(tipo, e) {
     alvo.textContent = valor === undefined || valor === null ? '—' : String(valor);
   }
 
-  const notas = raiz.querySelector('[data-notas]');
-  const htmlNotas = linhaNotas(tipo, e);
-  notas.className = htmlNotas ? CLASSE_NOTAS : `${CLASSE_NOTAS} hidden`;
-  notas.innerHTML = htmlNotas;
-
-  const f = linhaFrescura(e);
-  const linha = raiz.querySelector('[data-frescura]');
-  linha.className = `${CLASSE_FRESCURA} ${f.classe}`;
-  linha.innerHTML = f.html;
+  // Correu bem: o rodapé não tem nada a dizer. Limpa-se, para a frase de uma
+  // falha anterior não ficar por baixo de números que já são bons.
+  const rodape = raiz.querySelector('[data-rodape]');
+  rodape.className = `${CLASSE_RODAPE} text-slate-500`;
+  rodape.textContent = '';
 
   const tira = raiz.querySelector('[data-falha]');
   tira.classList.add('hidden');
@@ -682,18 +581,15 @@ function aplicarFalha(tipo, err) {
     alvo.textContent = '—';
   }
 
-  // A linha da frescura não diz "desconhecida" nem desaparece: passa a dizer a
-  // única coisa boa que há para dizer. É a metade tranquilizadora da notícia, e
-  // vive aqui em vez de na tira porque este espaço já existe em todos os
-  // cartões — a data ocupa-o quando há dados. Dito na tira, alongava-a, e a
-  // tira faz crescer a linha inteira da grelha. A tira fica com o problema e o
-  // botão; o cartão fica com a garantia.
-  const notas = raiz.querySelector('[data-notas]');
-  notas.className = `${CLASSE_NOTAS} hidden`;
-  notas.textContent = '';
-  const linha = raiz.querySelector('[data-frescura]');
-  linha.className = `${CLASSE_FRESCURA} text-slate-500`;
-  linha.textContent = 'A página abre na mesma.';
+  // O rodapé não diz "desconhecida" nem desaparece: passa a dizer a única coisa
+  // boa que há para dizer. É a metade tranquilizadora da notícia, e vive aqui em
+  // vez de na tira porque esta fila já existe em todos os cartões — está lá,
+  // vazia, quando corre tudo bem. Dito na tira, alongava-a, e a tira faz crescer
+  // a linha inteira da grelha. A tira fica com o problema e o botão; o cartão
+  // fica com a garantia.
+  const rodape = raiz.querySelector('[data-rodape]');
+  rodape.className = `${CLASSE_RODAPE} text-slate-500`;
+  rodape.textContent = 'A página abre na mesma.';
 
   raiz.querySelector('[data-falha]').classList.remove('hidden');
   const botao = raiz.querySelector('[data-retentar]');
