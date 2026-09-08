@@ -12,6 +12,7 @@ uploads/
 
 # Ferramentas locais do agente (skills e settings da máquina de quem edita)
 .claude/
+.impeccable/
 
 # Sistema
 Thumbs.db
