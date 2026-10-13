@@ -252,7 +252,7 @@ GO
 -- acesso dos orgânicos.
 --   IGA             → ver + registar/editar
 --   IGA-Consulta    → só ver
---   IGA-Admin       → + importar, abater e apagar registos
+--   IGA-Admin       → + abater e apagar registos
 --
 -- Os grupos são do MÓDULO e não dos rádios: valem para os telemóveis (migração
 -- 002) e para o equipamento que vier a seguir. Ficam nesta migração por ser a
@@ -278,7 +278,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'IGA-Consulta')
 IF NOT EXISTS (SELECT 1 FROM dbo.grupos WHERE nome = 'IGA-Admin')
     INSERT INTO dbo.grupos (nome, sigla, descricao, lider_mecanografico, tipo)
     VALUES ('IGA-Admin', 'IGA-A',
-            'Inventário e Gestão de Ativos — administração (importar, abater, apagar)', @lider, 'acl');
+            'Inventário e Gestão de Ativos — administração (abater, apagar)', @lider, 'acl');
 GO
 
 -- ── 9. Membros iniciais ────────────────────────────────────
