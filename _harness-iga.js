@@ -4,6 +4,7 @@
  *
  *   npm run harness
  *   ATOR=andreia.r.goncalves npm run harness
+ *   npm run harness-rede          (o mesmo que IDENTIDADE=windows)
  *
  * ATOR escolhe quem se está a fingir. O gate lê o username, resolve-o para
  * mecanográfico em `colaboradores.[user]` e vai aos grupos:
@@ -15,6 +16,11 @@
  * sério não há harness nenhum: a identidade vem do Windows (SSPI) e o router é
  * montado pelo `server/index.js`.
  *
+ * **`IDENTIDADE=windows` é para os colegas testarem pela rede.** Em vez de um
+ * ATOR fixo, cada pedido traz o login do Windows de quem o faz — o mesmo que a
+ * intranet recebe do SSPI —, e o que cada um regista fica com o seu nome. Ver
+ * `inscreverColega()` para quem ainda não está na base.
+ *
  * **Uma página por tipo de equipamento.** Um tipo novo é mais uma entrada em
  * `PAGINAS` — e é só isso que aqui muda.
  */
@@ -22,9 +28,12 @@ const path = require('path');
 const express = require('express');
 const router = require('./server/routes/iga');
 const { exigirAcesso } = require('./server/routes/iga/permissoes');
+const { poolPromise, sql } = require('./db');
 
 const ATOR = process.env.ATOR || 'helder.canarias';
 const PORTA = parseInt(process.env.HARNESS_PORT || '3943', 10);
+const WINDOWS = (process.env.IDENTIDADE || '').toLowerCase() === 'windows'
+  || process.argv.includes('--windows');
 
 /**
  * As páginas do módulo, todas atrás do gate de VER. A primeira é a porta de
@@ -32,9 +41,90 @@ const PORTA = parseInt(process.env.HARNESS_PORT || '3943', 10);
  */
 const PAGINAS = ['iga', 'radios', 'telemoveis', 'impressoras', 'maquinas'];
 
+/**
+ * Onde começam os mecanográficos inventados para os colegas.
+ *
+ * A base de desenvolvimento não tem a tabela `colaboradores` da intranet, só os
+ * quatro utilizadores de teste; quem chega pela rede não tem mecanográfico
+ * nenhum. Um número a partir daqui não pode ser confundido com um verdadeiro
+ * (os da PM têm seis algarismos) e diz, só de olhar, de onde veio.
+ */
+const MEC_COLEGAS = 900000000;
+
+/** Inscrições a decorrer, por username — dois pedidos ao mesmo tempo não inscrevem duas vezes. */
+const inscricoes = new Map();
+
+/**
+ * Põe na base de desenvolvimento um colega que entrou pelo Windows e não está lá.
+ *
+ * Fica em `colaboradores` com um mecanográfico de `MEC_COLEGAS` para cima e
+ * entra no grupo `IGA` — edição sem administração, que é o que se quer de quem
+ * vem testar: abater e apagar continuam só de quem está no `IGA-Admin`. Quem já
+ * existe (os utilizadores de teste, ou um colega da segunda visita em diante)
+ * não é tocado, e mantém os grupos que tiver.
+ *
+ * Isto é andaime de desenvolvimento, como o `000_seed_local.sql`: na intranet a
+ * tabela é a dos colaboradores a sério e os grupos geram-se na consola AD-PM.
+ */
+function inscreverColega(username) {
+  if (!inscricoes.has(username)) {
+    inscricoes.set(username, (async () => {
+      const pool = await poolPromise;
+      const r = await pool.request()
+        .input('u', sql.NVarChar(120), username)
+        .input('base', sql.Int, MEC_COLEGAS)
+        .query(`
+          SET XACT_ABORT ON;
+          BEGIN TRAN;
+          DECLARE @mec INT = (SELECT TOP 1 mecanografico FROM dbo.colaboradores WITH (UPDLOCK, HOLDLOCK)
+                              WHERE LOWER([user]) = LOWER(@u));
+          DECLARE @novo BIT = 0;
+          IF @mec IS NULL
+          BEGIN
+            SET @mec = (SELECT ISNULL(MAX(mecanografico), @base) + 1 FROM dbo.colaboradores WITH (UPDLOCK, HOLDLOCK)
+                        WHERE mecanografico > @base);
+            INSERT INTO dbo.colaboradores (mecanografico, nome, [user]) VALUES (@mec, @u, @u);
+            INSERT INTO dbo.grupo_membros (grupo_id, mecanografico, data_entrada, ativo)
+            SELECT id, @mec, CAST(GETDATE() AS DATE), 1 FROM dbo.grupos WHERE nome = 'IGA';
+            SET @novo = 1;
+          END
+          COMMIT;
+          SELECT @mec AS mec, @novo AS novo;`);
+      const { mec, novo } = r.recordset[0];
+      if (novo) console.log(`[harness IGA] ${username} inscrito no grupo IGA (mecanográfico ${mec})`);
+    })().catch(err => {
+      // Sem a inscrição o colega leva um 403 e pode tentar outra vez; esquecer a
+      // falha deixa a próxima visita repetir em vez de ficar presa a ela.
+      inscricoes.delete(username);
+      throw err;
+    }));
+  }
+  return inscricoes.get(username);
+}
+
 const app = express();
 app.use(express.json());
-app.use((req, _res, next) => { req.user = `PM\\${ATOR}`; next(); });
+
+if (WINDOWS) {
+  // NTLM e não Negotiate: o harness corre na conta de quem o arrancou, não como
+  // serviço, e o Kerberos cifra o bilhete para a conta da máquina — o processo
+  // não o conseguia ler e a autenticação falhava sem mensagem nenhuma.
+  const { sso } = require('node-expose-sspi');
+  app.use(sso.auth({ forceNTLM: true, useActiveDirectory: false, useGroups: false }));
+  app.use(async (req, res, next) => {
+    const u = req.sso && req.sso.user;
+    if (!u || !u.name) return res.status(401).send('Sem identidade do Windows.');
+    req.user = `${u.domain || ''}\\${u.name}`;
+    try {
+      await inscreverColega(u.name.toLowerCase());
+      next();
+    } catch (err) {
+      next(err);
+    }
+  });
+} else {
+  app.use((req, _res, next) => { req.user = `PM\\${ATOR}`; next(); });
+}
 
 // Mesma ordem do server/index.js: as páginas são gated, os assets são públicos.
 app.use('/api/iga', router);
@@ -48,6 +138,7 @@ app.get('/', (req, res) => res.redirect(`/${PAGINAS[0]}.html`));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORTA, () => {
-  console.log(`[harness IGA] http://localhost:${PORTA}/  (actor: ${ATOR}, BD: ${process.env.DB_DATABASE || 'do .env'})`);
+  const quem = WINDOWS ? 'login do Windows de cada pedido' : `actor: ${ATOR}`;
+  console.log(`[harness IGA] http://localhost:${PORTA}/  (${quem}, BD: ${process.env.DB_DATABASE || 'do .env'})`);
   for (const p of PAGINAS) console.log(`    · http://localhost:${PORTA}/${p}.html`);
 });

@@ -203,6 +203,13 @@ assumir o que este ficheiro tem.
   abate e a remoção `exigirAdmin`.
 - **Não acrescentes autenticação.** A identidade vem do Windows (SSPI) na intranet e é injectada
   pelo harness em desenvolvimento.
+- **O `npm run harness-rede` é o harness a fazer de SSPI**, para colegas testarem pela rede — não
+  é autenticação nova no módulo: o router continua a ler só `req.user`. Vive todo no
+  `_harness-iga.js`, e o `node-expose-sspi` é `devDependency` por isso. ⚠️ **NTLM forçado**: o
+  harness corre na conta de quem o arranca, e o Kerberos falhava sem dizer porquê. ⚠️ Quem não
+  está em `colaboradores` é **inscrito sozinho no grupo `IGA`** com um mecanográfico de
+  900000001 para cima — andaime da base de desenvolvimento, como o `000_seed_local.sql`; nunca
+  o leves para a intranet.
 - Nunca leias `x-remote-user` directamente — só `req.user`.
 - `canAdmin` é só do grupo `IGA-Admin`: ser administrador da consola AD-PM **não** abre o
   abate. É de propósito — senão, desactivar alguém no grupo não tinha efeito nenhum.

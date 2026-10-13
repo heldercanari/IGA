@@ -161,6 +161,22 @@ ATOR=sem.acesso npm run harness
 Na intranet a sério não há harness nenhum: a identidade vem do Windows (SSPI) e o router é
 montado pelo `server/index.js`.
 
+### Para os colegas testarem pela rede
+
+```bash
+npm run harness-rede
+```
+
+Em vez de um `ATOR` fixo, cada pedido traz o **login do Windows de quem o faz** — o mesmo que
+a intranet recebe do SSPI —, e o que cada um regista fica com o seu nome. O endereço a dar é
+`http://<nome-da-máquina>:3943/`, **pelo nome e não pelo IP**: o browser só entrega o login
+sozinho a endereços da intranet, e um IP conta como Internet — pedia utilizador e password.
+
+Quem entra e não está em `colaboradores` é inscrito na primeira visita, com um mecanográfico
+a partir de 900000001 e no grupo `IGA`: **edição, sem administração**. Abater e apagar
+continuam só de quem estiver no `IGA-Admin`. Para tirar o acesso a alguém, desactiva-se a
+linha dele em `grupo_membros`.
+
 ## O que o módulo faz
 
 **Parque** — Alias, Rádio, N. Série, Estado, Atribuído, Data e Ações. O detalhe completo (TEI,
