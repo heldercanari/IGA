@@ -177,6 +177,10 @@ a partir de 900000001 e no grupo `IGA`: **edição, sem administração**. Abate
 continuam só de quem estiver no `IGA-Admin`. Para tirar o acesso a alguém, desactiva-se a
 linha dele em `grupo_membros`.
 
+O nome que o cabeçalho mostra é o do **Active Directory** ("Hélder Canarias (PM)"), acertado em
+`colaboradores` a cada arranque — também para os utilizadores do `000_seed_local.sql`, que são
+contas verdadeiras com nomes de teste.
+
 ## O que o módulo faz
 
 **Parque** — Alias, Rádio, N. Série, Estado, Atribuído, Data e Ações. O detalhe completo (TEI,

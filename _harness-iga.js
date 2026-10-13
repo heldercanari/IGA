@@ -61,17 +61,24 @@ const inscricoes = new Map();
  * entra no grupo `IGA` — edição sem administração, que é o que se quer de quem
  * vem testar: abater e apagar continuam só de quem está no `IGA-Admin`. Quem já
  * existe (os utilizadores de teste, ou um colega da segunda visita em diante)
- * não é tocado, e mantém os grupos que tiver.
+ * mantém o mecanográfico e os grupos que tiver.
+ *
+ * O `nome` é o do Active Directory, e é acertado também a quem já existe: é o
+ * que o cabeçalho das páginas mostra ao lado de "Utilizador:". Os utilizadores
+ * do `000_seed_local.sql` são contas verdadeiras com nomes de teste ("Teste —
+ * escrita e administração"), e quem entra com o seu login quer ver o seu nome.
+ * Sem nome no AD fica o que lá estiver, ou o username para quem é novo.
  *
  * Isto é andaime de desenvolvimento, como o `000_seed_local.sql`: na intranet a
  * tabela é a dos colaboradores a sério e os grupos geram-se na consola AD-PM.
  */
-function inscreverColega(username) {
+function inscreverColega(username, nome) {
   if (!inscricoes.has(username)) {
     inscricoes.set(username, (async () => {
       const pool = await poolPromise;
       const r = await pool.request()
         .input('u', sql.NVarChar(120), username)
+        .input('nome', sql.NVarChar(200), nome || null)
         .input('base', sql.Int, MEC_COLEGAS)
         .query(`
           SET XACT_ABORT ON;
@@ -83,15 +90,18 @@ function inscreverColega(username) {
           BEGIN
             SET @mec = (SELECT ISNULL(MAX(mecanografico), @base) + 1 FROM dbo.colaboradores WITH (UPDLOCK, HOLDLOCK)
                         WHERE mecanografico > @base);
-            INSERT INTO dbo.colaboradores (mecanografico, nome, [user]) VALUES (@mec, @u, @u);
+            INSERT INTO dbo.colaboradores (mecanografico, nome, [user]) VALUES (@mec, ISNULL(@nome, @u), @u);
             INSERT INTO dbo.grupo_membros (grupo_id, mecanografico, data_entrada, ativo)
             SELECT id, @mec, CAST(GETDATE() AS DATE), 1 FROM dbo.grupos WHERE nome = 'IGA';
             SET @novo = 1;
           END
+          ELSE IF @nome IS NOT NULL
+            UPDATE dbo.colaboradores SET nome = @nome
+            WHERE mecanografico = @mec AND (nome IS NULL OR nome <> @nome);
           COMMIT;
           SELECT @mec AS mec, @novo AS novo;`);
       const { mec, novo } = r.recordset[0];
-      if (novo) console.log(`[harness IGA] ${username} inscrito no grupo IGA (mecanográfico ${mec})`);
+      if (novo) console.log(`[harness IGA] ${username} (${nome || 'sem nome no AD'}) inscrito no grupo IGA (mecanográfico ${mec})`);
     })().catch(err => {
       // Sem a inscrição o colega leva um 403 e pode tentar outra vez; esquecer a
       // falha deixa a próxima visita repetir em vez de ficar presa a ela.
@@ -102,6 +112,17 @@ function inscreverColega(username) {
   return inscricoes.get(username);
 }
 
+/**
+ * O nome por extenso de quem entrou, tal como o AD o mostra no Outlook
+ * ("Hélder Canarias (PM)"). O AD devolve cada atributo como lista; vazio quando
+ * não está disponível, e quem chama decide o que fica no lugar.
+ */
+function nomeDoAD(u) {
+  const ad = u.adUser || {};
+  const v = [].concat(ad.displayName || ad.cn || [])[0];
+  return v ? String(v).trim() || null : null;
+}
+
 const app = express();
 app.use(express.json());
 
@@ -109,14 +130,15 @@ if (WINDOWS) {
   // NTLM e não Negotiate: o harness corre na conta de quem o arrancou, não como
   // serviço, e o Kerberos cifra o bilhete para a conta da máquina — o processo
   // não o conseguia ler e a autenticação falhava sem mensagem nenhuma.
+  // O Active Directory é só para o nome por extenso (ver `nomeDoAD()`).
   const { sso } = require('node-expose-sspi');
-  app.use(sso.auth({ forceNTLM: true, useActiveDirectory: false, useGroups: false }));
+  app.use(sso.auth({ forceNTLM: true, useActiveDirectory: true, useGroups: false }));
   app.use(async (req, res, next) => {
     const u = req.sso && req.sso.user;
     if (!u || !u.name) return res.status(401).send('Sem identidade do Windows.');
     req.user = `${u.domain || ''}\\${u.name}`;
     try {
-      await inscreverColega(u.name.toLowerCase());
+      await inscreverColega(u.name.toLowerCase(), nomeDoAD(u));
       next();
     } catch (err) {
       next(err);
