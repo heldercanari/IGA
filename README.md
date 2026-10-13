@@ -123,7 +123,7 @@ correcções de ficha. A base de dados é a única fonte; não há ficheiro nenh
 
 Os importadores (`scripts/importar_*.js`, o `scripts/_sincronizacao.js` e o `avarias.csv`)
 saíram do repositório nessa data e ficaram no histórico do git — o último commit que os tem é o
-`ed7f011`. Uma base de desenvolvimento nova arranca vazia; para lhe pôr dados, copia-se a que
+`25065c0`. Uma base de desenvolvimento nova arranca vazia; para lhe pôr dados, copia-se a que
 já existe, não se recorre aos scripts antigos.
 
 As tabelas `*_importacoes` continuam na base: guardam o registo da carga inicial, e o ecrã

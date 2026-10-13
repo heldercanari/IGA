@@ -54,7 +54,7 @@ base de dados é a única fonte. As folhas de origem serviram para a carga inici
 
 - **Os importadores saíram do repositório**: `scripts/importar_*.js`, o
   `scripts/_sincronizacao.js`, o `avarias.csv` e a dependência do `exceljs`. Estão no histórico
-  do git (o último commit que os tem é o `ed7f011`). **Não os ressuscites** para "pôr dados numa
+  do git (o último commit que os tem é o `25065c0`). **Não os ressuscites** para "pôr dados numa
   base nova" — copia-se a base que existe.
 - **As tabelas `*_importacoes` ficam na base**, como registo da carga, mas nada as lê: o
   `/estatisticas` deixou de devolver `ultima_importacao` e a entrada deixou de mostrar a data.
