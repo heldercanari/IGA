@@ -205,12 +205,14 @@ junto com a limpeza da base), e as duas folhas de que dependiam deixaram de ser 
 Sem uso actual.
 
 **Telemóveis** — 300 aparelhos com número, IMEI, serviço e estado, com as mesmas entregas,
-avarias e abates dos rádios. As **credenciais do cartão e da conta** (PIN, PUK, utilizador e
-palavra passe) não aparecem na listagem nem na exportação: só na ficha do aparelho, atrás de
-"mostrar credenciais", e só para quem é `IGA-Admin`. Cada leitura fica no log.
+avarias e abates dos rádios. A tabela mostra o número, a **conta do aparelho** (`pmNNNind`), o
+estado e quem o tem; o IMEI, a marca, o modelo e o serviço estão na ficha. O **PIN, o PUK e a
+palavra passe** não aparecem na listagem nem na exportação: só na ficha do aparelho, atrás de
+"mostrar credenciais", e só para quem é `IGA-Admin`. Cada leitura fica no log. A conta também
+não sai no CSV.
 
 > ⚠️ Dois avisos sobre as credenciais que vêm do ficheiro de origem: a **palavra passe é
-> derivável do utilizador** nos 300 aparelhos (`pm251ind` → `pm251ind!`), e os **PIN perderam
+> derivável do utilizador** nos 300 aparelhos (`pmNNNind` → `pmNNNind!`), e os **PIN perderam
 > os zeros à esquerda** por a coluna ser numérica no Excel — o ecrã assinala os que têm menos
 > de 4 dígitos, e não os completa: dez tentativas erradas pedem o PUK.
 

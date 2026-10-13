@@ -7,11 +7,19 @@
  * permissões são as mesmas do resto (grupos `IGA`, `IGA-Consulta` e
  * `IGA-Admin`). O que muda é a base de dados — ver `db-telemoveis.js`.
  *
- * ⚠️ **As credenciais nunca saem daqui sem ser pela rota própria.** Nenhuma
- * consulta deste ficheiro devolve `pin`, `puk`, `utilizador` ou `palavra_passe`:
- * as colunas estão escritas uma a uma nos SELECT, e não há `SELECT *`, para que
- * acrescentar um campo à listagem seja uma decisão e não um descuido. Só
- * `GET /telemoveis/:id/credenciais`, reservada ao grupo `IGA-Admin`, as lê.
+ * ⚠️ **O PIN, o PUK e a palavra passe nunca saem daqui sem ser pela rota
+ * própria.** Nenhuma consulta deste ficheiro devolve `pin`, `puk` ou
+ * `palavra_passe`: as colunas estão escritas uma a uma nos SELECT, e não há
+ * `SELECT *`, para que acrescentar um campo à listagem seja uma decisão e não um
+ * descuido. Só `GET /telemoveis/:id/credenciais`, reservada ao grupo
+ * `IGA-Admin`, as lê.
+ *
+ * A **conta do aparelho** (`utilizador`) foi uma dessas decisões (2026-10-13):
+ * sai na listagem porque é por ela que o NSIC identifica o telemóvel no dia a
+ * dia, e o ecrã mostra-a numa coluna. Tomada sabendo que a palavra passe se
+ * deduz dela (`pmNNNind` → `pmNNNind!`) — o que obriga a trocar as palavras
+ * passe, não a esconder a conta. Continua a só se poder **gravar** pela
+ * administração.
  */
 
 const express = require('express');
@@ -23,8 +31,8 @@ const { limpar, inteiro, data, hoje, actor, falhou } = require('./comum');
 
 const ESTADOS = ['disponivel', 'atribuido', 'avariado', 'abatido'];
 
-/** As colunas que podem sair daqui. As credenciais não estão nesta lista. */
-const COLUNAS = `t.id, t.numero, t.imei1, t.imei2, t.marca, t.modelo,
+/** As colunas que podem sair daqui. O PIN, o PUK e a palavra passe não estão nesta lista. */
+const COLUNAS = `t.id, t.numero, t.imei1, t.imei2, t.marca, t.modelo, t.utilizador,
   t.estado, t.localizacao, t.marcador, t.obs, t.criado_em, t.atualizado_em`;
 
 /** Mesma regra e mesma precedência do módulo dos rádios. */
@@ -90,7 +98,8 @@ router.get('/', async (req, res) => {
     const q = limpar(req.query.q);
     if (q) {
       pedido.input('q', sql.NVarChar(200), `%${q}%`);
-      filtros.push(`(t.numero LIKE @q OR t.imei1 LIKE @q OR t.imei2 LIKE @q OR t.modelo LIKE @q
+      filtros.push(`(t.numero LIKE @q OR t.utilizador LIKE @q
+                     OR t.imei1 LIKE @q OR t.imei2 LIKE @q OR t.modelo LIKE @q
                      OR t.marca LIKE @q OR t.localizacao LIKE @q
                      OR a.nome_utilizador LIKE @q OR CAST(a.matricula AS NVARCHAR(20)) LIKE @q)`);
     }

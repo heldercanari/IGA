@@ -113,7 +113,7 @@
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
             <div class="flex-1 min-w-[240px]">
                 <label for="procura" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
-                <input id="procura" type="search" placeholder="Número, IMEI, modelo, serviço ou quem o tem…"
+                <input id="procura" type="search" placeholder="Número, conta, IMEI, modelo, serviço ou quem o tem…"
                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div>
@@ -140,8 +140,7 @@
                     <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
                         <tr>
                             <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Número</th>
-                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">IMEI</th>
-                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Equipamento</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Conta</th>
                             <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Estado</th>
                             <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Quem o tem</th>
                             <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Entregue</th>
@@ -294,7 +293,7 @@ function desenhar() {
   const corpo = document.getElementById('tabela');
 
   if (!estado.telemoveis.length) {
-    corpo.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-slate-600 text-sm">
+    corpo.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-600 text-sm">
       Nenhum telemóvel encontrado com estes filtros.</td></tr>`;
     document.getElementById('rodape').textContent = '';
     return;
@@ -307,13 +306,11 @@ function desenhar() {
     // A descrição da avaria NÃO vem para a tabela: são frases inteiras vindas do
     // ficheiro de origem ("Avaria no ecra não responde ao toque") e desalinhavam
     // as linhas todas. O estado diz que está avariado; o motivo está na ficha.
+    // O IMEI, a marca, o modelo e o serviço também só estão na ficha: a tabela
+    // fica com o que identifica o aparelho no dia a dia — o número e a conta.
     return `<tr class="hover:bg-slate-50">
       <td class="px-3 py-2 font-bold text-slate-900">${t.numero ? esc(t.numero) : '<span class="text-slate-300 font-normal">sem cartão</span>'}</td>
-      <td class="px-3 py-2 font-mono text-xs text-slate-600">${t.imei1 ? esc(t.imei1) : '<span class="text-slate-300">—</span>'}</td>
-      <td class="px-3 py-2">
-        <div class="text-slate-800">${esc(t.marca || '—')} <span class="text-slate-500">${esc(t.modelo || '')}</span></div>
-        ${t.localizacao ? `<div class="text-[11px] text-slate-600">${esc(t.localizacao)}</div>` : ''}
-      </td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-700">${t.utilizador ? esc(t.utilizador) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2">${etiqueta(t.estado)}</td>
       <td class="px-3 py-2">${entregue}</td>
       <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${t.data_entrega ? dataPt(t.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
@@ -397,6 +394,7 @@ async function abrirDetalhe(id) {
       </div>
       <dl class="grid grid-cols-2 gap-3">
         ${linhaCampo('Número', esc(t.numero))}
+        ${linhaCampo('Conta', t.utilizador ? `<span class="font-mono">${esc(t.utilizador)}</span>` : '')}
         ${linhaCampo('Serviço', esc(t.localizacao))}
         ${linhaCampo('IMEI 1', t.imei1 ? `<span class="font-mono text-xs">${esc(t.imei1)}</span>` : '')}
         ${linhaCampo('IMEI 2', t.imei2 ? `<span class="font-mono text-xs">${esc(t.imei2)}</span>` : '')}
@@ -409,7 +407,7 @@ async function abrirDetalhe(id) {
       <h3 class="text-sm font-bold text-slate-700 mb-1">Cartão e conta</h3>
       <div id="zonaCredenciais">
         ${estado.permissoes.canAdmin
-          ? `<p class="text-xs text-slate-500 mb-2">PIN, PUK e conta do aparelho. A leitura fica registada no log.</p>
+          ? `<p class="text-xs text-slate-500 mb-2">PIN, PUK e palavra passe. A leitura fica registada no log.</p>
              <button id="btnCredenciais" class="text-xs font-semibold text-blue-600 hover:underline">Mostrar credenciais</button>`
           : '<p class="text-sm text-slate-600">Reservado ao grupo IGA-Admin.</p>'}
       </div>
@@ -655,9 +653,11 @@ function modalEquipamento(t) {
  * CSV com ponto e vírgula e BOM: é o que o Excel em português abre sem pedir
  * nada. Com vírgula, o Excel PT junta tudo numa coluna só.
  *
- * Sem PIN, PUK nem conta: a listagem que alimenta isto não os traz da API, e é
- * de propósito que a exportação não os vá buscar — um CSV é a maneira mais fácil
- * de espalhar 300 credenciais por aí.
+ * Sem PIN, PUK nem palavra passe: a listagem que alimenta isto não os traz da
+ * API, e é de propósito que a exportação não os vá buscar — um CSV é a maneira
+ * mais fácil de espalhar 300 credenciais por aí. A conta vem na listagem e está
+ * na tabela, mas também fica de fora: a palavra passe deduz-se dela, e levá-la
+ * num ficheiro é decisão à parte da de a mostrar no ecrã.
  */
 function exportarCSV() {
   const colunas = ['numero', 'imei1', 'imei2', 'marca', 'modelo', 'estado', 'localizacao',

@@ -25,7 +25,7 @@
 -- cartão SIM e da conta do próprio aparelho.
 --
 -- ⚠️ **A palavra passe é derivável do utilizador** em todos os 301 registos:
--- `pm251ind` → `pm251ind!`. Isto está aqui registado porque é um facto do
+-- `pmNNNind` → `pmNNNind!`. Isto está aqui registado porque é um facto do
 -- material, não porque seja aceitável — quem gerir a frota que decida.
 --
 -- PORQUÊ — o PIN fica como está, sem zeros à esquerda

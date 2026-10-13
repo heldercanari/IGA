@@ -187,9 +187,13 @@ assumir o que este ficheiro tem.
 
 ## Credenciais dos telemóveis
 
-- ⚠️ **Nenhuma consulta de listagem ou de detalhe pode devolver `pin`, `puk`, `utilizador` ou
+- ⚠️ **Nenhuma consulta de listagem ou de detalhe pode devolver `pin`, `puk` ou
   `palavra_passe`.** Os SELECT do `telemoveis.js` escrevem as colunas uma a uma e **não há
   `SELECT *`** — é o que faz de acrescentar um campo à listagem uma decisão e não um descuido.
+- **A conta (`utilizador`) foi essa decisão, em 2026-10-13**: sai na listagem e é uma coluna da
+  tabela, porque é por ela que o NSIC identifica o aparelho. Foi tomada sabendo que a palavra
+  passe se deduz da conta (`pmNNNind` → `pmNNNind!`). **Gravá-la continua a ser só de
+  `canAdmin`**, e **não entra no CSV**: levá-la num ficheiro é outra decisão.
 - A única porta é `GET /telemoveis/:id/credenciais`, com `exigirAdmin`, e a leitura fica no
   log. O `PUT` também só grava credenciais a quem é `canAdmin`, e só os campos que vierem no
   corpo: um formulário sem eles não pode apagá-las por omissão.
