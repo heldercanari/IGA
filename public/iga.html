@@ -206,17 +206,6 @@ const TIPOS = [
  */
 const GRELHA_CONTAGENS = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };
 
-/**
- * A partir de quantos dias a última importação passa a ser dita em âmbar.
- *
- * As importações correm à mão, quando chega ficheiro novo — não há agendamento
- * nenhum, portanto isto não é um prazo falhado: é o ponto a partir do qual vale
- * a pena avisar quem lê os números de que podem já não bater certo com as folhas
- * de origem. O âmbar sai do VALOR e não do campo — um cartão importado ontem diz
- * a mesma coisa em cinzento. Âmbar permanente ensina a ignorar o âmbar.
- */
-const DIAS_ATE_AVISAR = 30;
-
 /** Depois de o ecrã de erro subir, nada mais escreve por baixo dele. */
 let bloqueada = false;
 
@@ -251,7 +240,6 @@ const ICONES = {
   'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path>',
   'printer': '<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"></path><rect x="6" y="14" width="12" height="8" rx="1"></rect>',
   'camera': '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"></path><circle cx="12" cy="13" r="3"></circle>',
-  'alert-triangle': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path>',
   'chevron-right': '<path d="m9 18 6-6-6-6"></path>',
 };
 
@@ -376,68 +364,6 @@ async function copiarConta() {
   botao.temporizador = setTimeout(() => { botao.textContent = 'Copiar conta'; }, 2500);
 }
 
-// ─── Frescura das contagens ────────────────────────────────
-
-function doisDigitos(n) { return String(n).padStart(2, '0'); }
-
-/** Dias inteiros entre a data do carimbo e hoje — datas civis dos dois lados. */
-function diasDesde(d) {
-  const carimbo = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const agora = new Date();
-  const hoje = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  return Math.round((hoje - carimbo) / 86400000);
-}
-
-/**
- * Quando é que estes números foram importados pela última vez.
- *
- * "Última importação" e não "actualizado": o carimbo é da corrida do importador,
- * não da última alteração — o que se muda pelo ecrã não passa por aqui. Dizer
- * "actualizado" era prometer uma coisa que este valor não sabe.
- *
- * Lido em UTC como nas outras páginas: o `executado_em` é um DATETIME escrito
- * com `GETDATE()` (hora de parede do servidor, sem fuso nenhum) e o driver
- * devolve-o marcado como UTC. Ler as componentes UTC repõe a hora que lá está;
- * ler as locais fazia-a saltar em qualquer fuso a oeste de Lisboa.
- */
-function frescura(e) {
-  const v = e && e.ultima_importacao;
-  const d = v ? new Date(v) : null;
-  if (!d || isNaN(d)) return { texto: 'Sem registo de importação', velha: false };
-
-  const hh = doisDigitos(d.getUTCHours());
-  const mm = doisDigitos(d.getUTCMinutes());
-  const dia = `${doisDigitos(d.getUTCDate())}/${doisDigitos(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
-  const dias = diasDesde(d);
-
-  let quando;
-  if (dias < 0) quando = dia;                        // relógios desencontrados
-  else if (dias === 0) quando = `hoje, ${hh}:${mm}`;
-  else if (dias === 1) quando = `ontem, ${hh}:${mm}`;
-  else if (dias < 60) quando = `há ${dias} dias`;
-  else quando = `há ${Math.round(dias / 30)} meses`;
-
-  return {
-    texto: `Última importação: ${quando}`,
-    titulo: `${dia} às ${hh}:${mm}`,
-    // Data e hora locais, sem `Z`: o carimbo é hora de parede e não um instante
-    // em UTC — pôr-lhe fuso era afirmar uma precisão que ele não tem.
-    iso: `${d.getUTCFullYear()}-${doisDigitos(d.getUTCMonth() + 1)}-${doisDigitos(d.getUTCDate())}T${hh}:${mm}`,
-    velha: dias >= DIAS_ATE_AVISAR,
-  };
-}
-
-function linhaFrescura(e) {
-  const f = frescura(e);
-  if (!f.iso) return { html: esc(f.texto), classe: 'text-slate-500' };
-  const marca = `<time datetime="${esc(f.iso)}" title="${esc(f.titulo)}">${esc(f.texto)}</time>`;
-  if (!f.velha) return { html: marca, classe: 'text-slate-500' };
-  return {
-    html: `${icone('alert-triangle', 'w-3.5 h-3.5 shrink-0')}${marca}`,
-    classe: 'text-amber-700 font-semibold',
-  };
-}
-
 // ─── Desenho do cartão ─────────────────────────────────────
 
 /** O bloco cinzento que ocupa o lugar de um valor enquanto ele não chega. */
@@ -460,7 +386,7 @@ const CLASSE_CONTAGEM_DESTAQUE = 'text-2xl leading-7 font-extrabold';
 // subordinado mais escuro do que aquilo a que se subordina, que é a hierarquia
 // ao contrário. Os dois continuam acima de AA; troca-se qual deles é o forte.
 const CLASSE_NOTAS = 'text-[11px] text-slate-500';
-const CLASSE_FRESCURA = 'text-[11px] flex items-center gap-1.5 min-w-0';
+const CLASSE_RODAPE = 'text-[11px] flex items-center gap-1.5 min-w-0';
 
 /**
  * A cor de uma contagem — e é aqui que vive a regra do âmbar.
@@ -557,12 +483,14 @@ function cartao(tipo) {
 
       <div class="mt-4 space-y-1">
         <p data-notas class="${CLASSE_NOTAS}${tipo.notas ? '' : ' hidden'}">${tipo.notas ? esqueleto('h-3 w-28') : ''}</p>
-        <!-- O galão vai na fila da frescura, e não numa linha só dele, porque
-             essa fila existe em todos os cartões desde a primeira pintura: aqui
-             não custa altura nenhuma, e a altura deste cartão é a altura da
-             linha inteira da grelha.
+        <!-- Não há data de importação nesta fila: os inventários deixaram de
+             vir de ficheiros e passaram a ser actualizados pelo ecrã, à medida
+             da necessidade — a data da última corrida do importador já não diz
+             nada sobre os números. A fila fica para o galão e para o aviso de
+             falha, e existe em todos os cartões desde a primeira pintura: a
+             altura deste cartão é a altura da linha inteira da grelha.
 
-             Existe porque, parado, nada dizia que o cartão se abre — o azul da
+             O galão existe porque, parado, nada dizia que o cartão se abre — o azul da
              borda e o do ícone só apareciam com o rato em cima, e esta é a
              ÚNICA passagem entre os quatro inventários (as páginas de
              equipamento não têm navegação entre tipos). Quem lesse os números
@@ -570,7 +498,7 @@ function cartao(tipo) {
              lado. Em cinzento parado e azul com o rato em cima: a seta é o
              sinal, o azul é a resposta. -->
         <div class="flex items-center justify-between gap-2">
-          <p data-frescura class="${CLASSE_FRESCURA} text-slate-500">${esqueleto('h-3 w-36')}</p>
+          <p data-rodape class="${CLASSE_RODAPE} text-slate-500"></p>
           <span class="shrink-0 text-slate-500 group-hover:text-blue-700 transition">${icone('chevron-right', 'w-4 h-4')}</span>
         </div>
       </div>
@@ -614,9 +542,7 @@ function porAEsperar(tipo) {
   const notas = raiz.querySelector('[data-notas]');
   notas.className = tipo.notas ? CLASSE_NOTAS : `${CLASSE_NOTAS} hidden`;
   notas.innerHTML = tipo.notas ? esqueleto('h-3 w-28') : '';
-  const linha = raiz.querySelector('[data-frescura]');
-  linha.className = `${CLASSE_FRESCURA} text-slate-500`;
-  linha.innerHTML = esqueleto('h-3 w-36');
+  raiz.querySelector('[data-rodape]').textContent = '';
 }
 
 function aplicarEstatisticas(tipo, e) {
@@ -641,10 +567,7 @@ function aplicarEstatisticas(tipo, e) {
   notas.className = htmlNotas ? CLASSE_NOTAS : `${CLASSE_NOTAS} hidden`;
   notas.innerHTML = htmlNotas;
 
-  const f = linhaFrescura(e);
-  const linha = raiz.querySelector('[data-frescura]');
-  linha.className = `${CLASSE_FRESCURA} ${f.classe}`;
-  linha.innerHTML = f.html;
+  raiz.querySelector('[data-rodape]').textContent = '';
 
   const tira = raiz.querySelector('[data-falha]');
   tira.classList.add('hidden');
@@ -682,18 +605,15 @@ function aplicarFalha(tipo, err) {
     alvo.textContent = '—';
   }
 
-  // A linha da frescura não diz "desconhecida" nem desaparece: passa a dizer a
-  // única coisa boa que há para dizer. É a metade tranquilizadora da notícia, e
-  // vive aqui em vez de na tira porque este espaço já existe em todos os
-  // cartões — a data ocupa-o quando há dados. Dito na tira, alongava-a, e a
-  // tira faz crescer a linha inteira da grelha. A tira fica com o problema e o
-  // botão; o cartão fica com a garantia.
+  // O rodapé diz a única coisa boa que há para dizer. É a metade
+  // tranquilizadora da notícia, e vive aqui em vez de na tira porque este espaço
+  // já existe em todos os cartões, vazio quando há dados. Dito na tira,
+  // alongava-a, e a tira faz crescer a linha inteira da grelha. A tira fica com
+  // o problema e o botão; o cartão fica com a garantia.
   const notas = raiz.querySelector('[data-notas]');
   notas.className = `${CLASSE_NOTAS} hidden`;
   notas.textContent = '';
-  const linha = raiz.querySelector('[data-frescura]');
-  linha.className = `${CLASSE_FRESCURA} text-slate-500`;
-  linha.textContent = 'A página abre na mesma.';
+  raiz.querySelector('[data-rodape]').textContent = 'A página abre na mesma.';
 
   raiz.querySelector('[data-falha]').classList.remove('hidden');
   const botao = raiz.querySelector('[data-retentar]');

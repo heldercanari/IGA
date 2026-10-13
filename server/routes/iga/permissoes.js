@@ -9,7 +9,7 @@
  * Modelo (espelha `server/routes/correspondencia/permissoes.js`):
  *   VER      → membro activo de 'IGA' OU 'IGA-Consulta' OU 'IGA-Admin'
  *   EDITAR   → membro activo de 'IGA'
- *   ADMIN    → membro activo de 'IGA-Admin'  (importar, abater, apagar)
+ *   ADMIN    → membro activo de 'IGA-Admin'  (abater, apagar)
  *   Admin da consola AD-PM (admin_users.ativo=1) entra em tudo, EXCEPTO na
  *   administração do módulo: essa é só do grupo (ver `canAdmin` abaixo).
  *
@@ -112,7 +112,7 @@ async function gruposDoColaborador(pool, mecanografico) {
  *
  * `isConsola` e `canAdmin` respondem a perguntas diferentes:
  *   isConsola → administrador da consola AD-PM; abre ver e editar.
- *   canAdmin  → importar, abater e apagar. SÓ membro activo de 'IGA-Admin'.
+ *   canAdmin  → abater e apagar. SÓ membro activo de 'IGA-Admin'.
  *               Sem esta separação, desactivar alguém no grupo não tinha efeito
  *               nenhum se essa pessoa fosse administradora da consola.
  */
@@ -223,7 +223,7 @@ async function exigirEdicao(req, res, next) {
 }
 
 /**
- * Middleware ADMIN — importação, abate e remoção de registos.
+ * Middleware ADMIN — abate e remoção de registos.
  * Testa `canAdmin`, não `isConsola`: a filiação activa em 'IGA-Admin' é a
  * única chave.
  */

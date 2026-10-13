@@ -40,9 +40,7 @@ const COLUNAS = `i.id, i.marca, i.modelo, i.num_serie, i.localizacao, i.ip,
  *
  * **Só toca em endereços IPv4 bem formados.** Qualquer outra coisa no campo — um
  * IPv6, um nome de máquina, um endereço a meio de ser escrito — passa intacta:
- * mexer no que não se percebe é pior do que deixar como está. O mesmo cuidado
- * está no `scripts/importar_impressoras.js`, que tem a sua cópia desta função
- * (os importadores não importam dos routers, como o dos telemóveis já fazia).
+ * mexer no que não se percebe é pior do que deixar como está.
  */
 function normalizarIP(v) {
   if (!v) return v;
@@ -119,8 +117,7 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.impressoras WHERE localizacao IS NULL)              AS sem_local,
         (SELECT COUNT(DISTINCT localizacao) FROM dbo.impressoras WHERE localizacao IS NOT NULL) AS locais,
         (SELECT COUNT(DISTINCT modelo) FROM dbo.impressoras WHERE modelo IS NOT NULL) AS modelos,
-        (SELECT COUNT(*) FROM dbo.impressoras WHERE ip IS NULL)                       AS sem_ip,
-        (SELECT TOP 1 executado_em FROM dbo.impressoras_importacoes ORDER BY id DESC) AS ultima_importacao`);
+        (SELECT COUNT(*) FROM dbo.impressoras WHERE ip IS NULL)                       AS sem_ip`);
     res.json(r.recordset[0]);
   } catch (err) {
     falhou(res, 'obter as estatísticas das impressoras', err);

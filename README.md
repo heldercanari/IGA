@@ -10,19 +10,21 @@ o prefixo: pertencem ao tipo, não à aplicação.
 
 Quatro tipos de activo, uma página para cada:
 
-- **Rádios** — parque TETRA. Fonte actual: `master radios.xlsx` (identificação) +
-  `atribuidos.xlsx` (quem tem o quê) + `avarias.csv`, no próprio repositório (o que está
-  avariado). Substituem o `Radios apanhado.xlsx` original (7 folhas) e as fontes TETRA que
-  vieram depois — ficaram só no histórico do git.
-- **Telemóveis** — 300 aparelhos. Substitui o `Livro 1.xlsx` (`C:\Apps\telemoveis`, uma folha).
-- **Impressoras** — 16 multifunções Konica Minolta. Substitui o `impressoras Konica.xlsx`
+- **Rádios** — parque TETRA. Carregado de `master radios.xlsx`, `atribuidos.xlsx` e
+  `avarias.csv`, que substituíram o `Radios apanhado.xlsx` original (7 folhas).
+- **Telemóveis** — 300 aparelhos. Carregado do `Livro 1.xlsx` (`C:\Apps\telemoveis`, uma folha).
+- **Impressoras** — 16 multifunções Konica Minolta. Carregado do `impressoras Konica.xlsx`
   (`C:\Apps\`, uma folha). **Este tipo não segue o molde dos outros dois**: uma impressora não
   é entregue a ninguém, está instalada num serviço — não tem entregas, avarias, abates nem
   coluna `estado`. O que se guarda dela é onde está.
-- **Máquinas fotográficas** — 15 Kodak PIXPRO WPZ2 com cartão de memória. Substitui a folha
+- **Máquinas fotográficas** — 15 Kodak PIXPRO WPZ2 com cartão de memória. Carregado da folha
   `Kodak PIXPRO` do `Kodak.xlsx` (`C:\Apps\`, o livro geral do NSIC com 27 folhas). **Tem
   entregas** — uma máquina é levantada por alguém —, mas não tem avarias, abates nem coluna
   `estado`: está entregue quem tiver um levantamento por devolver.
+
+**Os ficheiros serviram só para a carga inicial.** Desde 2026-10-13 não há importações: o
+inventário mantém-se no ecrã, à medida da necessidade, e a base de dados é a única fonte. Os
+importadores saíram do repositório — ver *[Os dados](#os-dados)*.
 
 > Este repositório é **um módulo destacado**, não um projecto autónomo — mesmo molde do
 > `correspondencia-pm`. A casa a sério do código é o repositório da intranet; aqui está só o
@@ -87,7 +89,7 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\004_maquinas.sql
 - `001_radios.sql` — os rádios: tabelas do parque e os três grupos de acesso.
 - `003_impressoras.sql` — as impressoras. Corre **nesta base**, não numa terceira: as
   impressoras não têm base própria nem pool própria. Duas tabelas só, `impressoras` e
-  `impressoras_importacoes` — sem `_atribuicoes`, `_avarias` nem `_abates`, e sem coluna
+  `impressoras_importacoes` (histórico da carga inicial) — sem `_atribuicoes`, `_avarias` nem `_abates`, e sem coluna
   `estado`; o ficheiro explica porquê.
 - `004_maquinas.sql` — as máquinas fotográficas, também nesta base. Leva `maquinas_atribuicoes`
   (ao contrário das impressoras: uma máquina é levantada por alguém), mas continua sem
@@ -113,81 +115,19 @@ sqlcmd -S localhost -E -d TelemoveisDev -I -Q "CREATE USER radios_dev FOR LOGIN 
 sqlcmd -S localhost -E -d TelemoveisDev -I -f 65001 -i migrations\002_telemoveis.sql
 ```
 
-### Carregar os dados
+## Os dados
 
-```bash
-npm run importar-radios
-```
+**Não há importações.** Os quatro tipos foram carregados uma vez a partir das folhas de origem
+e, desde 2026-10-13, mantêm-se só pelo ecrã — entregas, avarias, abates, mudanças de serviço e
+correcções de ficha. A base de dados é a única fonte; não há ficheiro nenhum a sincronizar.
 
-```bash
-npm run importar-telemoveis
-```
+Os importadores (`scripts/importar_*.js`, o `scripts/_sincronizacao.js` e o `avarias.csv`)
+saíram do repositório nessa data e ficaram no histórico do git — o último commit que os tem é o
+`ed7f011`. Uma base de desenvolvimento nova arranca vazia; para lhe pôr dados, copia-se a que
+já existe, não se recorre aos scripts antigos.
 
-```bash
-npm run importar-impressoras
-```
-
-```bash
-npm run importar-maquinas
-```
-
-O primeiro lê `C:\Apps\master radios.xlsx` (identificação), `C:\Apps\atribuidos.xlsx` (quem tem
-cada rádio) e `avarias.csv` — este último dentro do próprio repositório, não em `C:\Apps\`,
-porque é o único das três pensado para se editar directamente e ficar no histórico do git. Os
-caminhos das duas primeiras estão fixos no topo do script, não são parâmetro. O segundo lê
-`C:\Apps\telemoveis\Livro 1.xlsx`; o terceiro, `C:\Apps\impressoras Konica.xlsx`.
-
-⚠️ **O quarto lê UMA folha de um livro com 27.** O `C:\Apps\Kodak.xlsx` é o inventário geral do
-NSIC — impressoras, telemóveis, tablets, portáteis, GPS, cofres —, e o importador das máquinas
-vai à folha `Kodak PIXPRO` **pelo nome**, nunca "a primeira folha" (a primeira é a das
-impressoras Lexmark). Se a folha for renomeada, o script pára e lista as que existem.
-
-### ⚠️ A base de dados manda
-
-Desde 2026-09-07, **os importadores não escrevem por cima do que está na base**. A regra vive em
-`scripts/_sincronizacao.js` e é a mesma nos quatro:
-
-| | |
-|---|---|
-| campo **com valor** na base | fica como está, diga o ficheiro o que disser |
-| campo **vazio** na base | é preenchido pelo ficheiro |
-| linha que **não existe** | entra por inteiro |
-| equipamento **já entregue** na base | não muda de mãos pela importação |
-| o que o ficheiro diz **de diferente** | aparece no resumo, campo a campo, sem ser gravado |
-
-A razão foi concreta: o IP de uma impressora foi corrigido pelo ecrã e a importação seguinte
-desfez a correcção em silêncio. Um ecrã onde uma correcção não dura não serve para nada.
-
-Na prática, os ficheiros passaram de **fonte** a **sugestão**: servem para trazer equipamento
-novo e preencher o que a base não sabe. Quem tem o quê, e o valor certo de cada campo,
-decide-se no ecrã. Uma corrida sobre dados já importados não muda nada — só diz onde é que a
-folha e a base discordam.
-
-**Duas excepções**, ambas deliberadas: o `avarias.csv` continua a mandar nas avarias que ele
-próprio abriu (é escrito à mão no repositório para ser a interface das avarias, e tirar-lhe uma
-linha continua a ser a forma de dizer "reparado"), e o `--limpar` do importador dos telemóveis
-continua a apagar tudo — é uma escolha explícita de quem o corre, não uma corrida de rotina.
-
-### O resto
-
-Correm as vezes que forem precisas. Ao contrário do importador dos telemóveis, o dos rádios
-**não tem `--limpar`**: sincroniza em vez de destruir, nunca apaga em bloco. O rádio é
-encontrado pelo alias (a chave do master) ou pelo indicativo, a entrega por (rádio, matrícula) e
-a avaria por (rádio, ainda aberta, aberta por este importador) — nada duplica.
-
-Como o `atribuidos.xlsx` não tem datas, todas as entregas desta importação levam a mesma data
-fixa no código (`DATA_ATRIBUICAO_PADRAO`) — é quando o levantamento foi feito, não quando a
-entrega aconteceu de facto. O resumo no fim conta, por fonte, o que mudou: pessoas repetidas no
-ficheiro (fica a última linha), as que reclamam um rádio que outra pessoa também reclama (ficam
-de fora, dos dois lados, até se resolver na origem), números sem correspondência no master
-(entram como ficha mínima) e avarias abertas, actualizadas ou dadas como reparadas desde a
-corrida anterior. Ver `scripts/importar_radios.js` e o CLAUDE.md para o detalhe de cada regra.
-
-O das impressoras também sincroniza e também **não tem `--limpar`**: encontra a máquina pelo
-número de série e, na falta dele, pelo host name. **Tira os zeros à esquerda dos IP** (`10.22.129.049` → `10.22.129.49`) e conta no
-resumo quantas linhas vinham assim — hoje três. No fim **avisa quando o host name não bate
-certo com o último octeto do IP** — hoje uma linha, a da AADIVPOL; esse, o importador não
-corrige, porque não há maneira de saber qual dos dois valores está errado.
+As tabelas `*_importacoes` continuam na base: guardam o registo da carga inicial, e o ecrã
+deixou de as ler.
 
 ## Correr
 
@@ -230,22 +170,19 @@ continuam a funcionar sobre as mesmas colunas.
 
 **Entregas** — uma linha por entrega, com data, guia e observações. Entregar a outra pessoa
 fecha a entrega anterior em vez de a apagar. Uma pessoa pode ter mais do que uma entrega aberta
-ao mesmo tempo — acontece quando o `atribuidos.xlsx` descreve dois rádios na mesma célula.
+ao mesmo tempo — veio da carga inicial, quando o `atribuidos.xlsx` descrevia dois rádios na
+mesma célula.
 
 **Avarias** — tipo, se é de programação (`P`) ou física (`*`), onde está o equipamento, e o
-fecho (reparada ou irreparável). Fonte: `avarias.csv`, no próprio repositório — ver *As três
-fontes actuais* no CLAUDE.md para o formato e a sincronização. Continua a poder registar-se
-pelo ecrã (avaria pontual, fora do ficheiro); o importador só mexe nas que ele próprio abriu,
-nunca nas registadas à mão.
+fecho (reparada ou irreparável). Registam-se e fecham-se pelo ecrã; as que vieram do antigo
+`avarias.csv` ficaram com `registado_por = 'importação'` e fecham-se como as outras.
 
 **Abates** — o rádio sai do parque activo mas não é apagado; o histórico fica. Só administração.
-Mesma situação das avarias: sem fonte nas folhas actuais.
 
 **Conferência e Sistema TETRA** — as rotas e a lógica continuam no código
 (`/api/iga/radios/conferencia`, `/sistema`), mas os separadores saíram do ecrã (2026-09-04,
-junto com a limpeza da base) e nenhuma das duas folhas de que dependiam continua a ser
-importada. Sem uso actual; não removidos por não haver ainda a certeza de que o novo par de
-ficheiros não vai precisar de algo parecido.
+junto com a limpeza da base), e as duas folhas de que dependiam deixaram de ser importadas.
+Sem uso actual.
 
 **Telemóveis** — 300 aparelhos com número, IMEI, serviço e estado, com as mesmas entregas,
 avarias e abates dos rádios. As **credenciais do cartão e da conta** (PIN, PUK, utilizador e
@@ -270,8 +207,8 @@ nova com uma tabela `impressoras_localizacoes` — ver a `003`.
 
 Os **IP guardam-se sem zeros à esquerda**: a folha escreve-os de duas maneiras
 (`10.22.129.60` numa linha, `10.22.129.049` noutra) e a base guarda a forma canónica, a mesma
-que o Windows e o painel da impressora mostram. Vale para o que entra pela importação e para o
-que se escreve no ecrã.
+que o Windows e o painel da impressora mostram. O ecrã arruma o que se escreve da mesma
+maneira.
 
 > ⚠️ Numa das dezasseis linhas o **host name não bate certo com o IP** (AADIVPOL: IP `.60`,
 > host `_050`). Esse **não** foi corrigido: ao contrário dos zeros à esquerda, aqui não há
@@ -290,8 +227,8 @@ linhas por datar aparecem a âmbar na coluna "Atribuído" e contadas no KPI "Sem
 
 A **capacidade guarda-se como `32 GB`**: a folha escreve-a de três maneiras ("32Gb", "32GB",
 "32 Gb") e a base guarda uma, com o `B` de *byte* em maiúscula (o `b` minúsculo é *bit*, e um
-cartão de "32 Gb" à letra tinha 4 GB) e o espaço que separa o número da unidade. Vale para o
-que entra pela importação e para o que se escreve no ecrã; arruma-se a unidade, nunca o número.
+cartão de "32 Gb" à letra tinha 4 GB) e o espaço que separa o número da unidade. O ecrã arruma
+o que se escreve da mesma maneira; arruma-se a unidade, nunca o número.
 
 > ⚠️ Duas coisas que vêm da folha e ficaram como estavam: a **marca diz "Kodak W" ou "Kodak R"**
 > (o W e o R distinguem alguma coisa que a folha não explica, e parti-los era inventar o
@@ -336,18 +273,16 @@ Cada tipo é uma página e um router próprios. Para juntar, por exemplo, comput
    outros: é só uma variável no `.env` e uma pool.
 2. **Rotas** — `server/routes/iga/computadores.js`, no molde do `telemoveis.js`, e uma
    linha no `index.js`: `router.use('/computadores', require('./computadores'))`.
-3. **Importador**, se houver ficheiro de origem — `scripts/importar_computadores.js` e um
-   `npm run` no `package.json`.
-4. **Página** — `public/computadores.html`. O ponto de partida é o `telemoveis.html` para um
+3. **Página** — `public/computadores.html`. O ponto de partida é o `telemoveis.html` para um
    tipo que se entrega a pessoas, ou o `impressoras.html` para um que não se entregue.
-5. **Cartão na página de entrada** — uma entrada em `TIPOS`, no `public/iga.html`: nome,
+4. **Cartão na página de entrada** — uma entrada em `TIPOS`, no `public/iga.html`: nome,
    descrição, ícone, página, caminho da API e as `contagens` do rodapé do cartão — de uma a
    quatro, e a grelha ajusta-se (o `campo` de cada uma é a chave que vem do `/estatisticas`
    desse tipo; os tipos com o parque completo partilham a lista `CONTAGENS_PARQUE`). **Não
    inventes números para encher as quatro**: as máquinas fotográficas mostram três. É o único sítio onde a lista de tipos está
    escrita à mão: as páginas de equipamento não têm barra de navegação entre tipos (cada uma
    é dedicada ao seu), e a navegação faz-se toda pela entrada.
-6. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
+5. **Harness** — acrescentar o nome a `PAGINAS` no `_harness-iga.js`. Na intranet, a página
    entra no `server/index.js` de lá, gated por `exigirAcesso`.
 
 Os grupos de acesso **não mudam**: são do módulo, valem para todos os tipos.
@@ -366,7 +301,7 @@ registadas não leva `_avarias` nem `_abates`. E **a coluna `estado` só se just
 precedência dos quatro valores** (abatido > avariado > atribuído > disponível) a vir de três
 tabelas: com uma tabela só, a pergunta faz-se onde é precisa e não há segunda fonte de verdade
 para desalinhar. Repetir a forma por simetria dá tabelas que ninguém escreve e botões
-desligados no ecrã. O que não muda são os seis passos acima e os grupos de acesso.
+desligados no ecrã. O que não muda são os cinco passos acima e os grupos de acesso.
 
 ## Grupos de acesso
 
@@ -374,7 +309,7 @@ desligados no ecrã. O que não muda são os seis passos acima e os grupos de ac
 |---|---|
 | `IGA` | ver + registar/editar |
 | `IGA-Consulta` | só ver |
-| `IGA-Admin` | + importar, abater e apagar |
+| `IGA-Admin` | + abater e apagar |
 
 A gestão é pela consola AD-PM, como qualquer outro grupo. O administrador da consola
 (`admin_users`) entra em tudo **excepto** na administração do módulo — essa é só do grupo.

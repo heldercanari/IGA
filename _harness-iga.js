@@ -7,7 +7,7 @@
  *
  * ATOR escolhe quem se está a fingir. O gate lê o username, resolve-o para
  * mecanográfico em `colaboradores.[user]` e vai aos grupos:
- *   helder.canarias      → escrita + administração (importar, abater, apagar)
+ *   helder.canarias      → escrita + administração (abater, apagar)
  *   andreia.r.goncalves  → escrita, sem administração
  *   sem.acesso           → 403 nas páginas e na API
  *
