@@ -89,8 +89,8 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\004_maquinas.sql
 - `001_radios.sql` — os rádios: tabelas do parque e os três grupos de acesso.
 - `003_impressoras.sql` — as impressoras. Corre **nesta base**, não numa terceira: as
   impressoras não têm base própria nem pool própria. Duas tabelas só, `impressoras` e
-  `impressoras_importacoes` (histórico da carga inicial) — sem `_atribuicoes`, `_avarias` nem `_abates`, e sem coluna
-  `estado`; o ficheiro explica porquê.
+  `impressoras_importacoes` (histórico da carga inicial) — sem `_atribuicoes`, `_avarias` nem
+  `_abates`, e sem coluna `estado`; o ficheiro explica porquê.
 - `004_maquinas.sql` — as máquinas fotográficas, também nesta base. Leva `maquinas_atribuicoes`
   (ao contrário das impressoras: uma máquina é levantada por alguém), mas continua sem
   `_avarias`, `_abates` e sem coluna `estado`.
