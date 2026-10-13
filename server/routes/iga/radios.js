@@ -92,8 +92,7 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.radios WHERE num_serie IS NULL)                      AS sem_serie,
         (SELECT COUNT(*) FROM dbo.radios_avarias WHERE estado = 'aberta')              AS avarias_abertas,
         (SELECT COUNT(*) FROM dbo.radios_sistema)                                      AS no_sistema,
-        (SELECT COUNT(*) FROM dbo.radios_conferencia)                                  AS respostas_conferencia,
-        (SELECT TOP 1 executado_em FROM dbo.radios_importacoes ORDER BY id DESC)       AS ultima_importacao`);
+        (SELECT COUNT(*) FROM dbo.radios_conferencia)                                  AS respostas_conferencia`);
 
     const marcas = await pool.request().query(`
       SELECT ISNULL(marca, N'(sem marca)') AS marca, COUNT(*) AS total

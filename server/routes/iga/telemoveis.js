@@ -69,8 +69,7 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.telemoveis WHERE estado = 'avariado')          AS avariados,
         (SELECT COUNT(*) FROM dbo.telemoveis WHERE estado = 'abatido')           AS abatidos,
         (SELECT COUNT(*) FROM dbo.telemoveis WHERE numero IS NULL)               AS sem_numero,
-        (SELECT COUNT(*) FROM dbo.telemoveis_avarias WHERE estado = 'aberta')    AS avarias_abertas,
-        (SELECT TOP 1 executado_em FROM dbo.telemoveis_importacoes ORDER BY id DESC) AS ultima_importacao`);
+        (SELECT COUNT(*) FROM dbo.telemoveis_avarias WHERE estado = 'aberta')    AS avarias_abertas`);
     res.json(r.recordset[0]);
   } catch (err) {
     falhou(res, 'obter as estatísticas dos telemóveis', err);

@@ -57,9 +57,6 @@ const ENTREGA_ABERTA = `
  * separadora certa: arrumar a unidade é ortografia, converter o número era
  * outra coisa. E **só toca no que reconhece**: um valor que não seja um número
  * seguido de KB/MB/GB/TB passa intacto, seja "32 Gigabytes" ou uma frase.
- *
- * A mesma função está em `scripts/importar_maquinas.js` — os importadores deste
- * repositório não importam dos routers. Se mexeres numa, mexe na outra.
  */
 function normalizarCapacidade(v) {
   if (!v) return v;
@@ -135,8 +132,7 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.maquinas
           WHERE id NOT IN (SELECT maquina_id FROM abertas))                          AS disponiveis,
         (SELECT COUNT(*) FROM abertas WHERE data_entrega IS NULL)                    AS entregas_sem_data,
-        (SELECT COUNT(*) FROM dbo.maquinas WHERE num_serie IS NULL)                  AS sem_serie,
-        (SELECT TOP 1 executado_em FROM dbo.maquinas_importacoes ORDER BY id DESC)   AS ultima_importacao`);
+        (SELECT COUNT(*) FROM dbo.maquinas WHERE num_serie IS NULL)                  AS sem_serie`);
     res.json(r.recordset[0]);
   } catch (err) {
     falhou(res, 'obter as estatísticas das máquinas', err);
