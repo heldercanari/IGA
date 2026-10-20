@@ -8,7 +8,7 @@ API `/api/iga/<tipo>`, assets em `public/iga/`, grupos `IGA`, `IGA-Consulta` e `
 Os nomes por tipo de equipamento — `radios`, `telemoveis`, as tabelas e as bases — não levam
 o prefixo: pertencem ao tipo, não à aplicação.
 
-Cinco tipos de activo, uma página para cada:
+Seis tipos de activo, uma página para cada:
 
 - **Rádios** — parque TETRA. Carregado de `master radios.xlsx`, `atribuidos.xlsx` e
   `avarias.csv`, que substituíram o `Radios apanhado.xlsx` original (7 folhas).
@@ -25,6 +25,10 @@ Cinco tipos de activo, uma página para cada:
   consumiveis.xlsx` (OneDrive do NSIC). Molde completo dos telemóveis — entregas a pessoas,
   avarias, abates e `estado` — e a primeira carga depois de retirados os importadores: entrou
   uma vez, directamente na base, e daqui para a frente é pelo ecrã.
+- **GPS** — 20 GPS dos reboques: 12 Garmin DriveSmart 65 e 8 TomTom GO Discover. Molde das
+  impressoras com a **viatura** no lugar do serviço: um GPS não se entrega a ninguém, está num
+  reboque (n.º de chave, matrícula e marca da viatura). Sem entregas, avarias nem `estado`;
+  com abates, como todo o equipamento.
 
 **Os ficheiros serviram só para a carga inicial.** Desde 2026-10-13 não há importações: o
 inventário mantém-se no ecrã, à medida da necessidade, e a base de dados é a única fonte. Os
@@ -37,7 +41,7 @@ importadores saíram do repositório — ver *[Os dados](#os-dados)*.
 > para a cópia ser ficheiro-a-ficheiro.
 
 **Uma página por tipo de equipamento**, independente das outras: `public/radios.html`,
-`public/telemoveis.html`, `public/impressoras.html`, `public/maquinas.html` e `public/tablets.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
+`public/telemoveis.html`, `public/impressoras.html`, `public/maquinas.html`, `public/tablets.html` e `public/gps.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
 abertos: cada página é dona do seu ecrã, e em troca uma correcção de comportamento tem de ser
 repetida em todas. A secção *[Acrescentar um tipo de equipamento](#acrescentar-um-tipo-de-equipamento)*
 diz o que é preciso tocar.
@@ -95,6 +99,10 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\005_tablets.sql
 sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\006_autos_abate.sql
 ```
 
+```bash
+sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\008_gps.sql
+```
+
 - `000_seed_local.sql` — andaime de desenvolvimento: cria `colaboradores`, `grupos`,
   `grupo_membros` e `admin_users` com utilizadores de teste. **Não é uma migração da
   intranet**; lá estas tabelas já existem.
@@ -111,6 +119,8 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\006_autos_abate.sq
 - `006_autos_abate.sql` — os autos de abate: o cabeçalho (`autos_abate`), o estado
   proposto/abatido nos abates que já existiam, e `impressoras_abates` e `maquinas_abates`.
   Ver *Autos de abate*, abaixo.
+- `008_gps.sql` — os GPS dos reboques, nesta base: `gps` e `gps_abates`, e o `gps` entra no
+  `CHECK` dos tipos do `autos_abate`. (A `007` é a dos telemóveis, noutra base — ver abaixo.)
 
 ### A segunda base: telemóveis
 
@@ -140,7 +150,7 @@ A `007` é a parte da `006` que toca no `telemoveis_abates`: corre na base dos t
 
 ## Os dados
 
-**Não há importações.** Os cinco tipos foram carregados uma vez a partir das folhas de origem
+**Não há importações.** Os seis tipos foram carregados uma vez a partir das folhas de origem
 e, desde 2026-10-13, mantêm-se só pelo ecrã — entregas, avarias, abates, mudanças de serviço e
 correcções de ficha. A base de dados é a única fonte; não há ficheiro nenhum a sincronizar.
 
@@ -164,6 +174,7 @@ npm run harness
 - Impressoras → <http://localhost:3943/impressoras.html>
 - Máquinas fotográficas → <http://localhost:3943/maquinas.html>
 - Tablets → <http://localhost:3943/tablets.html>
+- GPS → <http://localhost:3943/gps.html>
 
 A entrada é a página a dar às pessoas e a pôr no menu da intranet: mostra um cartão por
 equipamento com as contagens, e abre a página respectiva. O cabeçalho das páginas de
@@ -324,8 +335,8 @@ Tudo debaixo de `/api/iga`. O gate de VER está aplicado ao router inteiro; as m
 levam `exigirEdicao`, e o abate e a remoção `exigirAdmin`.
 
 Cada tipo de equipamento tem o seu router debaixo do seu nome — `/api/iga/radios/…`,
-`/api/iga/telemoveis/…`, `/api/iga/impressoras/…`, `/api/iga/maquinas/…` e `/api/iga/tablets/…` —,
-e o `/permissoes` é do módulo, comum aos cinco.
+`/api/iga/telemoveis/…`, `/api/iga/impressoras/…`, `/api/iga/maquinas/…`, `/api/iga/tablets/…` e
+`/api/iga/gps/…` —, e o `/permissoes` é do módulo, comum aos seis.
 
 | Método | Rota | Quem |
 |---|---|---|
@@ -380,6 +391,7 @@ fotográficas (`004`) são os precedentes, e escolheram diferente:
 | rádios, telemóveis, tablets | sim | sim / sim | sim, com `recalcularEstado()` |
 | impressoras | **não** — não se entregam | não / **sim** | **não** |
 | máquinas fotográficas | **sim** — levantam-se | não / **sim** | **não** — lê-se da entrega aberta |
+| GPS | **não** — estão numa viatura | não / **sim** | **não** |
 
 **Todos os tipos levam `_abates`** desde a `006`, porque todo o equipamento vai a auto de
 abate: a tabela no molde do `impressoras_abates`, o tipo acrescentado ao `CHECK` do

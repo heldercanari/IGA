@@ -16,6 +16,7 @@
  *   /api/iga/impressoras → ./impressoras.js  (base do módulo — a mesma dos rádios)
  *   /api/iga/maquinas    → ./maquinas.js     (idem — máquinas fotográficas)
  *   /api/iga/tablets     → ./tablets.js      (idem)
+ *   /api/iga/gps         → ./gps.js          (idem — os GPS dos reboques)
  *
  * Cada tipo tem o seu ficheiro; **base própria só quando é preciso**. Os
  * telemóveis têm-na por decisão de desenvolvimento (ver a 002); as impressoras
@@ -45,5 +46,6 @@ router.use('/telemoveis', require('./telemoveis'));
 router.use('/impressoras', require('./impressoras'));
 router.use('/maquinas', require('./maquinas'));
 router.use('/tablets', require('./tablets'));
+router.use('/gps', require('./gps'));
 
 module.exports = router;

@@ -457,8 +457,13 @@ function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
   document.getElementById('modalGravar').textContent = textoGravar || 'Gravar';
   document.getElementById('modalForm').innerHTML = campos.map(c => {
     const base = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+    // A lista de escolha é do "Propor para abate" (apto para doação: sim/não):
+    // sem este ramo saía uma caixa de texto onde se escrevia "select".
     const controlo = c.tipo === 'textarea'
       ? `<textarea id="c_${c.nome}" name="${c.nome}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`
+      : c.tipo === 'select'
+        ? `<select id="c_${c.nome}" name="${c.nome}" class="${base}">${c.opcoes.map(o =>
+            `<option value="${esc(o.valor)}" ${o.valor === c.valor ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}</select>`
       : `<input id="c_${c.nome}" name="${c.nome}" type="${c.tipo || 'text'}" value="${esc(c.valor || '')}"
            ${c.lista ? `list="${c.lista}"` : ''} ${c.obrigatorio ? 'required' : ''}
            placeholder="${esc(c.dica || '')}" class="${base}">`;

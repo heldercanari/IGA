@@ -62,11 +62,11 @@ base de dados é a única fonte. As folhas de origem serviram para a carga inici
 - **Um tipo novo não traz importador.** Se um dia vier um ficheiro para carregar, é uma carga
   única e conversa a ter primeiro, não um script de rotina.
 
-## Duas bases de dados, cinco tipos
+## Duas bases de dados, seis tipos
 
 - **Os rádios estão na `RadiosDev` e os telemóveis na `TelemoveisDev`.** Duas pools: o `db.js`
   (cópia da intranet) e o `db-telemoveis.js`, que só existe por causa disto.
-- **As impressoras, as máquinas fotográficas e os tablets ficam na base do `db.js` — a mesma dos rádios — e
+- **As impressoras, as máquinas fotográficas, os tablets e os GPS ficam na base do `db.js` — a mesma dos rádios — e
   não têm pool própria.** Base própria é a excepção que os telemóveis são, não a regra: um
   `db-impressoras.js` era uma terceira ligação para chegar ao mesmo sítio. Um tipo novo só leva
   pool quando levar base.
@@ -187,6 +187,22 @@ assumir o que este ficheiro tem.
   distinguem algo que a folha não explica — parti-los era inventar o significado de uma letra)
   e a coluna "Levantou" traz o **username**, não o nome.
 
+## Os GPS: o molde das impressoras, numa viatura
+
+O sexto tipo (`008`) são os GPS dos reboques (Garmin e TomTom). Escolhe do molde como as
+impressoras: **não se entrega a ninguém** — está numa viatura —, sem `_atribuicoes`, sem
+`_avarias`, sem coluna `estado` e sem `recalcularEstado()`. Abates tem, como todo o equipamento.
+
+- **A viatura são três colunas no próprio GPS** (`viatura_chave`, `viatura_matricula`,
+  `viatura_marca`), como a `localizacao` das impressoras: onde está, não por onde andou. "Em
+  viatura" é ter a chave **ou** a matrícula. Não há tabela de viaturas — o IGA não as gere.
+- **O "Nº Chave" é texto** (a etiqueta da chave do reboque), mas a listagem ordena-o como
+  número quando o é.
+- ⚠️ **O `PUT /gps/:id` grava só os campos que vierem**, como o das impressoras: "mudar de
+  viatura" manda só os três da viatura. Não o uniformizes com o dos telemóveis.
+- **Um tipo novo entra no `CK_autos_abate_tipo`**, senão os autos de abate dele são recusados
+  pela base — foi o que a `008` teve de fazer.
+
 ## Os tablets: o molde completo, e a ficha mostra tudo
 
 O quinto tipo (`005`) é o molde dos telemóveis inteiro — entregas a pessoas, avarias, abates e
@@ -221,7 +237,7 @@ Desde a `006`/`007` abater não é um clique: **propõe-se** (fica `estado = 'pr
   número noutra categoria. Num rascunho o número corrige-se; o ano é sempre o da data.
 - **O `recalcularEstado()` só conta abates `'abatido'`.** Um equipamento proposto mantém o
   estado (normalmente 'avariado') e **não se entrega** — o `/atribuir` recusa-o.
-- **As rotas são as mesmas nos cinco tipos**, em `server/routes/iga/autos.js` (`montarAutos()`),
+- **As rotas são as mesmas em todos os tipos**, em `server/routes/iga/autos.js` (`montarAutos()`),
   chamado em cada router **antes do `/:id`**. As páginas continuam independentes: o bloco do
   ecrã está copiado nas cinco, de propósito.
 - ⚠️ **O cabeçalho está na base do módulo e as linhas na base do tipo.** Nos telemóveis são
@@ -277,7 +293,7 @@ Desde a `006`/`007` abater não é um clique: **propõe-se** (fica `estado = 'pr
 ## Uma página por tipo de equipamento
 
 - **`public/radios.html`, `public/telemoveis.html`, `public/impressoras.html` e
-  `public/maquinas.html` e `public/tablets.html` são independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
+  `public/maquinas.html`, `public/tablets.html` e `public/gps.html` são independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
   de uma página: cada tipo tem o seu ecrã, e o próximo equipamento será outra página. Foi
   decidido assim com o custo à vista — **não "arrumes" isto para um ficheiro comum** por
   parecer duplicação; é uma escolha, não um descuido. Se algum dia for para mudar, é conversa

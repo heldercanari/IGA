@@ -87,7 +87,7 @@ async function autoResumo(autoId) {
 
 /**
  * cfg = {
- *   tipo: 'radios', nome: 'Rádios', artigo: 'o rádio',
+ *   tipo: 'radios', nome: 'Rádios',   (o tipo tem de estar no CK_autos_abate_tipo — ver a 008)
  *   pool: <poolPromise do tipo>,
  *   equip: 'dbo.radios', abates: 'dbo.radios_abates', fk: 'radio_id',
  *   atribuicoes: 'dbo.radios_atribuicoes' | null,

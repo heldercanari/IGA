@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS · IGA</title>
+    <link rel="icon" type="image/png" href="/iga/favicon.png">
+    <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
+         aplica quando corre. Adiado para depois do parse, o browser chega a pintar
+         a página em cru. O ficheiro é local, não vem de CDN nenhum. O lucide fica
+         adiado — é só ícones, e o script de baixo já espera por ele. -->
+    <script src="/iga/tailwind.global.js"></script>
+    <script src="/iga/lucide.min.js" defer></script>
+    <style>
+        /* `hidden` é uma classe do Tailwind, portanto só existe depois de ele
+           compilar. Declará-la aqui garante que os modais e o toast não aparecem
+           empilhados na fracção de segundo anterior. */
+        .hidden { display: none; }
+
+        body, input, select, textarea, button {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        thead.pegajoso th { position: sticky; top: 0; z-index: 10; }
+        tbody tr { line-height: 1.3; }
+        .accao {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 6px; border: none;
+            background: transparent; cursor: pointer; flex-shrink: 0;
+            transition: background-color .15s, transform .1s;
+        }
+        .accao:hover { transform: scale(1.12); }
+        .accao:disabled { opacity: .25; cursor: not-allowed; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded">Saltar para o conteúdo</a>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite" class="fixed top-5 right-5 z-50 hidden items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white" style="min-width:260px">
+    <span id="toastIcone" aria-hidden="true"></span>
+    <span id="toastMsg"></span>
+</div>
+
+<div id="ecraErro" role="alert" aria-atomic="true" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <img src="/iga/logo_transparente.png" width="390" height="192" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-600 leading-relaxed"></p>
+        <!-- A conta é para ser lida ao telefone ou copiada para um email: é o
+             único texto deste ecrã que tem de sair daqui exactamente como está. -->
+        <p id="erroConta" class="hidden text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2"></p>
+    </div>
+</div>
+
+<div id="app" class="max-w-[1400px] mx-auto p-6">
+
+    <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <a href="/iga.html" class="flex items-center gap-4 group" title="Voltar ao início">
+            <img src="/iga/logo_transparente.png" width="390" height="192" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900 group-hover:text-blue-700 transition">Inventário e Gestão de Ativos
+                    <span class="align-middle ml-1 text-[11px] font-bold tracking-widest text-slate-600">IGA</span>
+                </h1>
+                <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
+            </div>
+        </a>
+        <div class="text-right flex flex-col items-end gap-1">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                Utilizador: <span id="nomeUtilizador">a carregar…</span>
+            </span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-600"></span>
+        </div>
+    </header>
+
+    <!-- Cartões de contagem.
+         Contam a viatura, não a pessoa: um GPS não é entregue a ninguém, está
+         num reboque. "Sem viatura" é o que está por instalar, e filtra ao
+         carregar. -->
+    <section aria-label="Resumo dos GPS" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+        <button type="button" data-viatura="" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">GPS</p>
+            <p id="kpiTotal" class="text-2xl font-extrabold text-slate-900">—</p>
+        </button>
+        <button type="button" data-viatura="com" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Em viatura</p>
+            <p id="kpiEmViatura" class="text-2xl font-extrabold text-blue-700">—</p>
+            <p class="text-xs text-slate-600 mt-0.5">num reboque</p>
+        </button>
+        <button type="button" data-viatura="sem" class="cartao text-left bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-amber-300 transition">
+            <p class="text-xs text-slate-500 font-medium">Sem viatura</p>
+            <p id="kpiSemViatura" class="text-2xl font-extrabold text-amber-700">—</p>
+            <p class="text-xs text-slate-600 mt-0.5">por instalar</p>
+        </button>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Garmin · TomTom</p>
+            <p class="text-2xl font-extrabold text-slate-800"><span id="kpiGarmin">—</span> · <span id="kpiTomTom">—</span></p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-xs text-slate-500 font-medium">Abatidos</p>
+            <p id="kpiAbatidos" class="text-2xl font-extrabold text-slate-600">—</p>
+            <p id="kpiPropostos" class="text-xs text-slate-600 mt-0.5"></p>
+        </div>
+    </section>
+
+    <main id="conteudo">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+            <div class="flex-1 min-w-[240px]">
+                <label for="procura" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
+                <input id="procura" type="search" placeholder="Série, modelo, n.º de chave ou matrícula…"
+                       class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="filtroMarca" class="block text-xs font-semibold text-slate-600 mb-1">Marca</label>
+                <select id="filtroMarca" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todas</option>
+                    <option value="Garmin">Garmin</option>
+                    <option value="TomTom">TomTom</option>
+                </select>
+            </div>
+            <div>
+                <label for="filtroViatura" class="block text-xs font-semibold text-slate-600 mb-1">Viatura</label>
+                <select id="filtroViatura" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todos</option>
+                    <option value="com">Em viatura</option>
+                    <option value="sem">Sem viatura</option>
+                </select>
+            </div>
+            <button id="btnNova" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+                + Novo GPS
+            </button>
+            <button id="btnAutos" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                Autos de abate
+            </button>
+            <button id="btnExportar" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                Exportar CSV
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto max-h-[62vh] overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead class="pegajoso bg-slate-100 text-slate-600 text-xs uppercase tracking-wide">
+                        <tr>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Viatura</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">GPS</th>
+                            <th class="text-left font-semibold px-3 py-2.5 bg-slate-100">Nº série</th>
+                            <th class="text-right font-semibold px-3 py-2.5 bg-slate-100">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+            <p id="rodape" class="text-xs text-slate-500 px-4 py-3 border-t border-slate-100"></p>
+        </div>
+    </main>
+</div>
+
+<!-- ─── Painel de detalhe ─────────────────────────────────── -->
+<div id="painel" class="hidden fixed inset-0 z-40 flex justify-end">
+    <div class="absolute inset-0 bg-slate-900/40" data-fechar></div>
+    <aside role="dialog" aria-modal="true" aria-labelledby="painelTitulo"
+           class="relative bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl">
+        <header class="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-start justify-between gap-4">
+            <div>
+                <h2 id="painelTitulo" class="text-lg font-extrabold text-slate-900">GPS</h2>
+                <p id="painelSubtitulo" class="text-xs text-slate-500"></p>
+            </div>
+            <button data-fechar class="accao text-slate-500 hover:bg-slate-100" aria-label="Fechar">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </header>
+        <div id="painelCorpo" class="p-6 space-y-6"></div>
+    </aside>
+</div>
+
+<!-- ─── Modal de formulário ───────────────────────────────── -->
+<div id="modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-slate-900/50" data-fechar-modal></div>
+    <div role="dialog" aria-modal="true" aria-labelledby="modalTitulo"
+         class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <header class="px-6 py-4 border-b border-slate-200">
+            <h2 id="modalTitulo" class="text-base font-extrabold text-slate-900"></h2>
+            <p id="modalAjuda" class="text-xs text-slate-500 mt-0.5"></p>
+        </header>
+        <form id="modalForm" class="p-6 space-y-4"></form>
+        <footer class="px-6 py-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-2xl">
+            <button type="button" data-fechar-modal class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancelar</button>
+            <button type="submit" form="modalForm" id="modalGravar" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Gravar</button>
+        </footer>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+/**
+ * GPS — o ecrã do sexto tipo de activo: os GPS dos reboques.
+ *
+ * O molde das impressoras com a viatura no lugar do serviço: um GPS não se
+ * entrega a ninguém, está num reboque, e este ecrã existe para saber em qual e
+ * mudá-lo quando ele muda. Ver a migração 008.
+ *
+ * Como as outras páginas do módulo, esta não tem navegação para os outros tipos:
+ * volta-se pela entrada, no logótipo.
+ */
+
+const API = '/api/iga/gps';      // as rotas deste ecrã
+const API_MODULO = '/api/iga';   // /permissoes é do módulo, não do tipo
+
+const estado = {
+  permissoes: null,
+  gps: [],
+  filtros: { q: '', marca: '', viatura: '' },
+  aberto: null,
+};
+
+// ─── Utilitários ───────────────────────────────────────────
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/** Datas em dd/mm/aaaa, lidas em UTC — mesma razão das outras páginas. */
+function dataPt(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return esc(v);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+let toastTimer = null;
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  const cor = tipo === 'erro' ? 'bg-red-600' : tipo === 'aviso' ? 'bg-amber-600' : 'bg-emerald-600';
+  el.className = `fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white ${cor}`;
+  document.getElementById('toastIcone').innerHTML =
+    `<i data-lucide="${tipo === 'erro' ? 'alert-circle' : tipo === 'aviso' ? 'alert-triangle' : 'check-circle'}" class="w-5 h-5"></i>`;
+  document.getElementById('toastMsg').textContent = msg;
+  if (window.lucide) lucide.createIcons();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+async function pedir(caminho, opcoes, base) {
+  const r = await fetch((base || API) + caminho, Object.assign({ headers: { 'Accept': 'application/json' } }, opcoes));
+  let corpo = null;
+  try { corpo = await r.json(); } catch (e) { /* resposta sem JSON */ }
+  if (!r.ok) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+  return corpo;
+}
+
+function enviar(caminho, dados, metodo) {
+  return pedir(caminho, {
+    method: metodo || 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(dados || {}),
+  });
+}
+
+function linhaCampo(rotulo, valor) {
+  return `<div>
+    <dt class="text-[11px] uppercase tracking-wide text-slate-600 font-semibold">${esc(rotulo)}</dt>
+    <dd class="text-sm text-slate-800">${valor || '<span class="text-slate-300">—</span>'}</dd>
+  </div>`;
+}
+
+/** Como se diz a viatura: "Chave 400 · AA-00-00", ou nada se não estiver num reboque. */
+function textoViatura(g) {
+  return [g.viatura_chave ? `Chave ${g.viatura_chave}` : '', g.viatura_matricula || ''].filter(Boolean).join(' · ');
+}
+
+// ─── Listagem ──────────────────────────────────────────────
+
+async function carregar() {
+  const p = new URLSearchParams();
+  if (estado.filtros.q) p.set('q', estado.filtros.q);
+  if (estado.filtros.marca) p.set('marca', estado.filtros.marca);
+  if (estado.filtros.viatura) p.set('viatura', estado.filtros.viatura);
+  estado.gps = await pedir('/?' + p.toString());
+  desenhar();
+}
+
+function desenhar() {
+  const podeEditar = estado.permissoes && estado.permissoes.canEdit;
+  const podeAdmin = estado.permissoes && estado.permissoes.canAdmin;
+  const corpo = document.getElementById('tabela');
+
+  if (!estado.gps.length) {
+    corpo.innerHTML = `<tr><td colspan="4" class="px-4 py-10 text-center text-slate-600 text-sm">
+      Nenhum GPS encontrado com estes filtros.</td></tr>`;
+    document.getElementById('rodape').textContent = '';
+    return;
+  }
+
+  corpo.innerHTML = estado.gps.map(g => {
+    const viatura = textoViatura(g);
+    // A linha inteira abre a ficha — não há botão de olho. Os botões de acção
+    // ficam por cima: o `closest()` do clique encontra-os antes da linha.
+    return `<tr class="hover:bg-blue-50 cursor-pointer focus:outline-none focus:bg-blue-50" data-detalhe="${g.id}"
+              tabindex="0" aria-label="Ver detalhe do GPS ${esc(g.num_serie || viatura)}">
+      <td class="px-3 py-2">
+        ${viatura ? `<span class="font-bold text-slate-900">${esc(viatura)}</span>`
+                  : '<span class="text-amber-700 font-semibold">sem viatura</span>'}${etiquetaAbate(g.abate_estado)}
+        ${g.viatura_marca ? `<div class="text-[11px] text-slate-600">${esc(g.viatura_marca)}</div>` : ''}
+      </td>
+      <td class="px-3 py-2">
+        <div class="text-slate-800">${esc(g.marca || '—')} <span class="text-slate-500">${esc(g.modelo || '')}</span></div>
+      </td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${g.num_serie ? esc(g.num_serie) : '<span class="text-slate-300">—</span>'}</td>
+      <td class="px-3 py-2 text-right whitespace-nowrap">
+        <button class="accao text-blue-600 hover:bg-blue-50" data-mudar="${g.id}" title="Mudar de viatura" ${podeEditar && g.abate_estado !== 'abatido' ? '' : 'disabled'}>
+          <i data-lucide="truck" class="w-4 h-4"></i></button>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-editar="${g.id}" title="Editar" ${podeEditar ? '' : 'disabled'}>
+          <i data-lucide="pencil" class="w-4 h-4"></i></button>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-propor="${g.id}" title="Propor para abate" ${podeEditar && !g.abate_estado ? '' : 'disabled'}>
+          <i data-lucide="archive" class="w-4 h-4"></i></button>
+        <button class="accao text-red-600 hover:bg-red-50" data-apagar="${g.id}" title="Apagar" ${podeAdmin ? '' : 'disabled'}>
+          <i data-lucide="trash-2" class="w-4 h-4"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rodape').textContent =
+    `${estado.gps.length} GPS` +
+    (estado.filtros.q || estado.filtros.marca || estado.filtros.viatura ? ' (filtrado)' : '');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function carregarEstatisticas() {
+  const e = await pedir('/estatisticas');
+  document.getElementById('kpiTotal').textContent = e.total;
+  document.getElementById('kpiEmViatura').textContent = e.em_viatura;
+  document.getElementById('kpiSemViatura').textContent = e.sem_viatura;
+  document.getElementById('kpiGarmin').textContent = e.garmin;
+  document.getElementById('kpiTomTom').textContent = e.tomtom;
+  document.getElementById('kpiAbatidos').textContent = e.abatidos;
+  document.getElementById('kpiPropostos').textContent = e.propostos ? `${e.propostos} proposto${e.propostos === 1 ? '' : 's'} para abate` : '';
+}
+
+// ─── Detalhe ───────────────────────────────────────────────
+
+async function abrirDetalhe(id) {
+  const g = await pedir('/' + id);
+  estado.aberto = g;
+  const viatura = textoViatura(g);
+
+  document.getElementById('painelTitulo').textContent = viatura ? `GPS · ${viatura}` : 'GPS sem viatura';
+  document.getElementById('painelSubtitulo').textContent = `${g.marca || ''} ${g.modelo || ''}`.trim() || '—';
+
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex items-center gap-2 mb-3">
+        <span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${viatura
+          ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}">${viatura ? 'Em viatura' : 'Sem viatura'}</span>
+        ${estado.permissoes.canEdit
+          ? '<button id="btnMudar" class="ml-auto text-xs font-semibold text-blue-600 hover:underline">Mudar de viatura</button>'
+          : ''}
+      </div>
+      <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Viatura</h3>
+      <dl class="grid grid-cols-3 gap-3 mb-4">
+        ${linhaCampo('N.º de chave', esc(g.viatura_chave))}
+        ${linhaCampo('Matrícula', g.viatura_matricula ? `<span class="font-mono">${esc(g.viatura_matricula)}</span>` : '')}
+        ${linhaCampo('Marca', esc(g.viatura_marca))}
+      </dl>
+      <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">GPS</h3>
+      <dl class="grid grid-cols-3 gap-3">
+        ${linhaCampo('Marca', esc(g.marca))}
+        ${linhaCampo('Modelo', esc(g.modelo))}
+        ${linhaCampo('Nº de série', g.num_serie ? `<span class="font-mono text-xs">${esc(g.num_serie)}</span>` : '')}
+      </dl>
+      ${g.obs ? `<p class="mt-3 text-sm bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3">${esc(g.obs)}</p>` : ''}
+      <p class="mt-3 text-xs text-slate-500">Guarda-se em que viatura está, não por onde andou. Última alteração em ${dataPt(g.atualizado_em)}.</p>
+    </section>
+
+    ${seccaoAbate(g.abate, g.id)}
+
+    ${estado.permissoes.canEdit
+      ? '<button id="btnEditar" class="text-xs font-semibold text-blue-600 hover:underline">Editar a ficha</button>'
+      : ''}`;
+
+  document.getElementById('painel').classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+function fecharPainel() {
+  document.getElementById('painel').classList.add('hidden');
+  estado.aberto = null;
+}
+
+// ─── Modais ────────────────────────────────────────────────
+
+let submeterModal = null;
+
+function abrirModal({ titulo, ajuda, campos, gravar, textoGravar }) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalAjuda').textContent = ajuda || '';
+  document.getElementById('modalGravar').textContent = textoGravar || 'Gravar';
+  document.getElementById('modalForm').innerHTML = campos.map(c => {
+    const base = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+    const controlo = c.tipo === 'textarea'
+      ? `<textarea id="c_${c.nome}" name="${c.nome}" rows="2" class="${base}">${esc(c.valor || '')}</textarea>`
+      : c.tipo === 'select'
+        ? `<select id="c_${c.nome}" name="${c.nome}" class="${base}">${c.opcoes.map(o =>
+            `<option value="${esc(o.valor)}" ${o.valor === c.valor ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}</select>`
+      : `<input id="c_${c.nome}" name="${c.nome}" type="${c.tipo || 'text'}" value="${esc(c.valor || '')}"
+           ${c.lista ? `list="${c.lista}"` : ''} ${c.obrigatorio ? 'required' : ''}
+           placeholder="${esc(c.dica || '')}" class="${base}">`;
+    return `<div>
+      <label for="c_${c.nome}" class="block text-xs font-semibold text-slate-600 mb-1">${esc(c.rotulo)}</label>
+      ${controlo}
+      ${c.nota ? `<p class="text-xs text-slate-600 mt-1">${esc(c.nota)}</p>` : ''}
+    </div>`;
+  }).join('') + '<datalist id="listaMarcas"><option value="Garmin"></option><option value="TomTom"></option></datalist>';
+
+  submeterModal = gravar;
+  document.getElementById('modal').classList.remove('hidden');
+  const primeiro = document.querySelector('#modalForm input, #modalForm select, #modalForm textarea');
+  if (primeiro) primeiro.focus();
+}
+
+function fecharModal() {
+  document.getElementById('modal').classList.add('hidden');
+  submeterModal = null;
+}
+
+function dadosDoModal() {
+  const dados = {};
+  new FormData(document.getElementById('modalForm')).forEach((v, k) => { dados[k] = String(v).trim(); });
+  return dados;
+}
+
+/** Recarrega o que está à vista depois de uma alteração. */
+async function refrescar(idDetalhe) {
+  await Promise.all([carregar(), carregarEstatisticas()]);
+  if (idDetalhe) await abrirDetalhe(idDetalhe);
+}
+
+function aparelho(id) {
+  return estado.gps.find(g => g.id === id) || estado.aberto || {};
+}
+
+/**
+ * Mudar de viatura — a acção do dia-a-dia deste ecrã. Manda só os três campos
+ * da viatura: o PUT grava apenas o que vem no corpo, e não apaga o resto.
+ */
+function modalMudar(id) {
+  const g = aparelho(id);
+  const atual = textoViatura(g);
+  abrirModal({
+    titulo: 'Mudar de viatura',
+    ajuda: atual ? `Está na viatura ${atual}. Para o tirar do reboque, deixe os campos vazios.` : 'Este GPS ainda não está em nenhuma viatura.',
+    campos: [
+      { nome: 'viatura_chave', rotulo: 'N.º de chave do reboque', tipo: 'text', valor: g.viatura_chave, dica: '400' },
+      { nome: 'viatura_matricula', rotulo: 'Matrícula', tipo: 'text', valor: g.viatura_matricula, dica: 'AA-00-00' },
+      { nome: 'viatura_marca', rotulo: 'Marca da viatura', tipo: 'text', valor: g.viatura_marca },
+    ],
+    textoGravar: 'Mudar',
+    gravar: async d => {
+      await enviar('/' + id, { viatura_chave: d.viatura_chave, viatura_matricula: d.viatura_matricula, viatura_marca: d.viatura_marca }, 'PUT');
+      toast('Viatura gravada.');
+      await refrescar(estado.aberto ? id : null);
+    },
+  });
+}
+
+function modalEquipamento(g) {
+  const novo = !g;
+  g = g || {};
+  abrirModal({
+    titulo: novo ? 'Novo GPS' : 'Editar o GPS',
+    ajuda: novo ? 'Basta o número de série ou o n.º de chave da viatura.' : '',
+    campos: [
+      { nome: 'marca', rotulo: 'Marca', tipo: 'text', valor: g.marca, lista: 'listaMarcas', dica: 'Garmin ou TomTom' },
+      { nome: 'modelo', rotulo: 'Modelo', tipo: 'text', valor: g.modelo, dica: 'DRIVESMART 65, GO Discover' },
+      { nome: 'num_serie', rotulo: 'Nº de série', tipo: 'text', valor: g.num_serie },
+      { nome: 'viatura_chave', rotulo: 'Viatura — n.º de chave', tipo: 'text', valor: g.viatura_chave, dica: '400' },
+      { nome: 'viatura_matricula', rotulo: 'Viatura — matrícula', tipo: 'text', valor: g.viatura_matricula },
+      { nome: 'viatura_marca', rotulo: 'Viatura — marca', tipo: 'text', valor: g.viatura_marca },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: g.obs },
+    ],
+    gravar: async d => {
+      if (novo) {
+        const criado = await enviar('/', d);
+        toast('GPS criado.');
+        await refrescar();
+        await abrirDetalhe(criado.id);
+      } else {
+        await enviar('/' + g.id, d, 'PUT');
+        toast('Alterações gravadas.');
+        await refrescar(estado.aberto ? g.id : null);
+      }
+    },
+  });
+}
+
+// ─── Exportação ────────────────────────────────────────────
+
+/** CSV com ponto e vírgula e BOM: é o que o Excel em português abre sem pedir nada. */
+function exportarCSV() {
+  const colunas = ['viatura_chave', 'viatura_marca', 'viatura_matricula', 'marca', 'modelo', 'num_serie', 'abate_estado', 'obs'];
+  const celula = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v).replace(/"/g, '""');
+    return /[";\n]/.test(s) ? `"${s}"` : s;
+  };
+  const linhas = [colunas.join(';')].concat(estado.gps.map(g => colunas.map(c => celula(g[c])).join(';')));
+  const url = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `gps_${hojeISO()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Ligações ──────────────────────────────────────────────
+
+let temporizadorProcura = null;
+function procuraAdiada(fn) {
+  clearTimeout(temporizadorProcura);
+  temporizadorProcura = setTimeout(fn, 250);
+}
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('[data-detalhe],[data-mudar],[data-editar],[data-apagar],[data-viatura],[data-fechar],[data-fechar-modal],#btnEditar,#btnMudar,#btnNova,#btnExportar');
+  if (!alvo) return;
+  const d = alvo.dataset;
+  try {
+    if (alvo.matches('[data-fechar]')) return fecharPainel();
+    if (alvo.matches('[data-fechar-modal]')) return fecharModal();
+    if (alvo.id === 'btnExportar') return exportarCSV();
+    if (alvo.id === 'btnNova') return modalEquipamento(null);
+    if (alvo.id === 'btnEditar') return modalEquipamento(estado.aberto);
+    if (alvo.id === 'btnMudar') return modalMudar(estado.aberto.id);
+    if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
+    if (d.mudar) return modalMudar(Number(d.mudar));
+    if (d.editar) return modalEquipamento(aparelho(Number(d.editar)));
+    if (d.apagar) {
+      const g = aparelho(Number(d.apagar));
+      if (!confirm(`Apagar o GPS ${g.num_serie || textoViatura(g)}? A ficha desaparece — não é um abate.`)) return;
+      await pedir('/' + d.apagar, { method: 'DELETE' });
+      toast('GPS apagado.');
+      if (estado.aberto && estado.aberto.id === Number(d.apagar)) fecharPainel();
+      return refrescar();
+    }
+    if (d.viatura !== undefined && alvo.classList.contains('cartao')) {
+      estado.filtros.viatura = d.viatura;
+      document.getElementById('filtroViatura').value = d.viatura;
+      return carregar();
+    }
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+});
+
+document.getElementById('modalForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!submeterModal) return;
+  const botao = document.getElementById('modalGravar');
+  botao.disabled = true;
+  try {
+    await submeterModal(dadosDoModal());
+    fecharModal();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+document.getElementById('procura').addEventListener('input', ev => {
+  estado.filtros.q = ev.target.value.trim();
+  procuraAdiada(() => carregar().catch(e => toast(e.message, 'erro')));
+});
+document.getElementById('filtroMarca').addEventListener('change', ev => {
+  estado.filtros.marca = ev.target.value;
+  carregar().catch(e => toast(e.message, 'erro'));
+});
+document.getElementById('filtroViatura').addEventListener('change', ev => {
+  estado.filtros.viatura = ev.target.value;
+  carregar().catch(e => toast(e.message, 'erro'));
+});
+
+// A linha abre-se também pelo teclado: Tab até ela e Enter, como num botão.
+document.getElementById('tabela').addEventListener('keydown', ev => {
+  const linha = ev.target.closest && ev.target.closest('tr[data-detalhe]');
+  if (!linha || ev.target !== linha || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  ev.preventDefault();
+  abrirDetalhe(Number(linha.dataset.detalhe)).catch(e => toast(e.message, 'erro'));
+});
+
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (!document.getElementById('modal').classList.contains('hidden')) return fecharModal();
+  if (!document.getElementById('painel').classList.contains('hidden')) return fecharPainel();
+});
+
+// ─── Abate e autos de abate ────────────────────────────────
+
+/**
+ * Propor para abate e os autos de abate.
+ *
+ * Este bloco é o mesmo nas cinco páginas, copiado de propósito: as páginas não
+ * partilham código (ver o CLAUDE.md). O que é comum vive no servidor, no
+ * `server/routes/iga/autos.js`, e o fluxo está na migração 006: propõe-se, o
+ * auto junta os propostos desta categoria, imprime-se no modelo da DMSI, e só
+ * ao homologar é que o equipamento fica abatido.
+ *
+ * Os cliques deste bloco são apanhados na fase de captura e não seguem: os
+ * botões vivem dentro de linhas que abrem a ficha, e o clique não pode chegar
+ * lá abaixo.
+ */
+
+const DESTINO_HABITUAL = 'RESIR - Resíduos Industriais e Reciclagem, Lda';
+
+/** A etiqueta pequena que vai ao lado do estado, na tabela. */
+function etiquetaAbate(estadoAbate) {
+  if (estadoAbate === 'proposto') {
+    return ' <span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 whitespace-nowrap" title="Proposto para abate, à espera de auto homologado">p/ abate</span>';
+  }
+  if (estadoAbate === 'abatido') {
+    return ' <span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 whitespace-nowrap">abatido</span>';
+  }
+  return '';
+}
+
+function painelAberto() {
+  return !document.getElementById('painel').classList.contains('hidden');
+}
+
+/** A secção do detalhe: proposto (com o auto, se já tiver) ou abatido. */
+function seccaoAbate(ab, idEquipamento) {
+  if (!ab) return '';
+  const auto = ab.auto
+    ? `Auto de abate n.º ${esc(ab.auto.numero_texto)}${ab.auto.estado === 'rascunho' ? ' (por homologar)' : ''}`
+    : '';
+  if (ab.estado === 'proposto') {
+    return `<section class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-amber-900 mb-1">Proposto para abate</h3>
+      <p class="text-sm text-amber-900">${esc(ab.motivo || 'sem motivo')}</p>
+      <p class="text-xs text-amber-800 mt-1">Apto para doação: ${esc(ab.apto_texto || '—')} · ${auto || 'ainda sem auto'}</p>
+      ${estado.permissoes.canEdit
+        ? `<button data-retirar-abate="${idEquipamento}" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Retirar a proposta</button>` : ''}
+    </section>`;
+  }
+  // Um abate de antes dos autos ainda se anula, pela administração; um feito por
+  // auto homologado não — o papel está assinado.
+  const podeAnular = !ab.auto && estado.permissoes.canAdmin;
+  return `<section class="bg-slate-100 border border-slate-200 rounded-lg p-4">
+    <h3 class="text-sm font-bold text-slate-700 mb-1">Abatido${ab.data_abate ? ' em ' + dataPt(ab.data_abate) : ''}</h3>
+    <p class="text-sm text-slate-600">${auto || esc(ab.motivo || 'sem motivo registado')}</p>
+    ${auto && ab.motivo && !/^Auto de abate/.test(ab.motivo) ? `<p class="text-xs text-slate-500 mt-1">${esc(ab.motivo)}</p>` : ''}
+    ${podeAnular ? `<button data-retirar-abate="${idEquipamento}" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Anular abate</button>` : ''}
+  </section>`;
+}
+
+function modalProporAbate(id) {
+  abrirModal({
+    titulo: 'Propor para abate',
+    ajuda: 'Fica marcado até entrar num auto de abate e o auto ser homologado. Até lá não conta como abatido, e não se entrega.',
+    campos: [
+      { nome: 'motivo', rotulo: 'Motivo', tipo: 'text', obrigatorio: true, dica: 'Inoperacional, obsoleto, extraviado…' },
+      { nome: 'apto_doacao', rotulo: 'Apto para doação', tipo: 'select', valor: 'nao', opcoes: [
+        { valor: 'nao', texto: 'Não' },
+        { valor: 'sim', texto: 'Sim' },
+      ] },
+      { nome: 'caracteristicas', rotulo: 'Características técnicas', tipo: 'text',
+        dica: 'Só se for apto para doação', nota: 'Vai para a coluna "Apto para doação" do auto.' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Propor',
+    gravar: async d => {
+      await enviar(`/${id}/abate`, d);
+      toast('Proposto para abate.');
+      await refrescar(painelAberto() ? id : null);
+    },
+  });
+}
+
+async function retirarAbate(id) {
+  if (!confirm('Retirar a proposta (ou anular o abate) e devolver o equipamento ao parque?')) return;
+  await pedir(`/${id}/abate`, { method: 'DELETE' });
+  toast('Feito.');
+  await refrescar(id);
+}
+
+// ─── Painel dos autos ──────────────────────────────────────
+
+const ESTADOS_AUTO = {
+  rascunho:   { texto: 'Por homologar', classe: 'bg-amber-100 text-amber-800' },
+  homologado: { texto: 'Homologado',    classe: 'bg-slate-200 text-slate-700' },
+};
+
+function etiquetaAuto(e) {
+  const x = ESTADOS_AUTO[e] || { texto: e, classe: 'bg-slate-100 text-slate-600' };
+  return `<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${x.classe}">${esc(x.texto)}</span>`;
+}
+
+const botaoSecundario = 'text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700';
+const botaoPrimario = 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40';
+
+async function abrirAutos() {
+  const r = await pedir('/autos');
+  estado.autos = r.autos;
+  estado.proximoAuto = r.proximo;
+  const pode = estado.permissoes.canEdit;
+  document.getElementById('painelTitulo').textContent = 'Autos de abate';
+  document.getElementById('painelSubtitulo').textContent = r.propostos_soltos
+    ? `${r.propostos_soltos} proposto${r.propostos_soltos === 1 ? '' : 's'} à espera de auto`
+    : 'Nenhum proposto à espera de auto';
+  document.getElementById('painelCorpo').innerHTML = `
+    <section class="space-y-2">
+      ${pode ? `<button data-auto-novo class="${botaoPrimario}" ${r.propostos_soltos ? '' : 'disabled'}>
+        ${!r.propostos_soltos ? 'Novo auto — não há propostos' : r.propostos_soltos === 1 ? 'Novo auto com o proposto' : `Novo auto com os ${r.propostos_soltos} propostos`}</button>` : ''}
+      <p class="text-xs text-slate-500">Cada auto leva só equipamento desta página. O n.º é o do papel (o IGA sugere
+        o seguinte ao último do ano), e a 1.ª folha sai no modelo da DMSI.</p>
+    </section>
+    <section>
+      <ul class="divide-y divide-slate-100">${r.autos.length ? r.autos.map(a => `
+        <li><button data-auto="${a.id}" class="w-full text-left flex items-center gap-3 py-2.5 hover:bg-slate-50 rounded">
+          <span class="font-bold text-slate-900 w-20">${esc(a.numero_texto)}</span>
+          <span class="text-sm text-slate-600 flex-1">${dataPt(a.data)} · ${a.itens} equipamento${a.itens === 1 ? '' : 's'}</span>
+          ${etiquetaAuto(a.estado)}
+        </button></li>`).join('') : '<li class="text-sm text-slate-600 py-2">Ainda não há autos de abate.</li>'}
+      </ul>
+    </section>`;
+  document.getElementById('painel').classList.remove('hidden');
+}
+
+async function abrirAuto(id) {
+  const a = await pedir('/autos/' + id);
+  estado.autoAberto = a;
+  const rascunho = a.estado === 'rascunho';
+  const podeEditar = rascunho && estado.permissoes.canEdit;
+  const comissao = [a.comissao1, a.comissao2, a.comissao3].filter(Boolean).map(esc).join('<br>');
+
+  document.getElementById('painelTitulo').textContent = `Auto de abate n.º ${a.numero_texto}`;
+  document.getElementById('painelSubtitulo').textContent =
+    `${dataPt(a.data)} · ${a.itens.length} equipamento${a.itens.length === 1 ? '' : 's'}`;
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        ${etiquetaAuto(a.estado)}
+        ${a.data_homologacao ? `<span class="text-xs text-slate-500">em ${dataPt(a.data_homologacao)}</span>` : ''}
+        <button data-autos class="ml-auto text-xs font-semibold text-blue-600 hover:underline">← Todos os autos</button>
+      </div>
+      <dl class="grid grid-cols-2 gap-3">
+        ${linhaCampo('Data', dataPt(a.data))}
+        ${linhaCampo('Comissão', comissao)}
+        ${linhaCampo('Entidade responsável', esc(a.destino))}
+        ${linhaCampo('Valor do auto', esc(a.valor))}
+      </dl>
+      ${a.obs ? `<p class="mt-3 text-sm bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3">${esc(a.obs)}</p>` : ''}
+      <div class="flex flex-wrap gap-2 mt-4">
+        <a href="${API}/autos/${a.id}/pdf" target="_blank" rel="noopener" class="${botaoPrimario}">Imprimir o auto (PDF)</a>
+        ${podeEditar ? `<button data-auto-editar class="${botaoSecundario}">Editar</button>
+                        <button data-auto-acrescentar class="${botaoSecundario}">Juntar propostos novos</button>` : ''}
+        ${rascunho && estado.permissoes.canAdmin ? `<button data-auto-homologar class="${botaoSecundario} text-emerald-700 border-emerald-300">Homologar</button>` : ''}
+        ${podeEditar ? `<button data-auto-apagar class="${botaoSecundario} text-red-600 border-red-200">Apagar</button>` : ''}
+      </div>
+      ${rascunho ? '<p class="text-xs text-slate-500 mt-2">Homologar é o último passo, quando o auto vier assinado: o equipamento fica abatido na data do auto.</p>' : ''}
+    </section>
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Equipamentos</h3>
+      <ul class="divide-y divide-slate-100">${a.itens.map(i => `
+        <li class="flex gap-3 py-2 text-sm">
+          <div class="flex-1">
+            <div class="font-semibold text-slate-800">${esc(i.identificacao || '—')}
+              <span class="font-normal text-slate-500">· ${esc(i.descricao || '')} · ${esc(i.marca || '')}</span></div>
+            <div class="text-xs text-slate-500">Série ${esc(i.serie || '—')} · ${esc(i.motivo || '')}
+              ${i.apto_texto ? ` · apto para doação: ${esc(i.apto_texto)}` : ''}</div>
+          </div>
+          ${podeEditar ? `<button data-auto-tirar="${i.id}" class="text-xs font-semibold text-red-600 hover:underline self-center">Tirar</button>` : ''}
+        </li>`).join('') || '<li class="text-sm text-slate-600 py-2">Sem equipamentos.</li>'}
+      </ul>
+    </section>`;
+  document.getElementById('painel').classList.remove('hidden');
+}
+
+/**
+ * A janela do auto: o que o modelo da DMSI pede, por esta ordem. Num auto novo a
+ * comissão e a entidade vêm do último (costumam ser as mesmas), e o n.º vem
+ * sugerido — mas é o do papel que conta, e corrige-se aqui.
+ */
+function camposAuto(a) {
+  return [
+    { nome: 'numero', rotulo: 'N.º do auto de abate', tipo: 'number', valor: a.numero, obrigatorio: true,
+      nota: a.sugerido ? `Sugerido: o seguinte ao último lançado em ${a.ano}. Escreva o do papel, se for outro.`
+                       : 'O ano é o da data do auto.' },
+    { nome: 'data', rotulo: 'Data da reunião da comissão', tipo: 'date', valor: a.data ? String(a.data).slice(0, 10) : hojeISO() },
+    { nome: 'comissao1', rotulo: 'Comissão — 1.º elemento', tipo: 'text', valor: a.comissao1, dica: 'Chefe Hélio Marques', obrigatorio: true },
+    { nome: 'comissao2', rotulo: 'Comissão — 2.º elemento', tipo: 'text', valor: a.comissao2 },
+    { nome: 'comissao3', rotulo: 'Comissão — 3.º elemento', tipo: 'text', valor: a.comissao3 },
+    { nome: 'valor', rotulo: 'Valor do auto', tipo: 'text', valor: a.valor,
+      nota: 'Vazio, e com mais de 10 equipamentos, fica "Em anexo a lista…".' },
+    { nome: 'destino', rotulo: 'Entidade responsável pelo equipamento a abater', tipo: 'text',
+      valor: a.destino || DESTINO_HABITUAL, obrigatorio: true,
+      nota: 'É o "abatendo-os à responsabilidade de" do auto.' },
+    { nome: 'obs', rotulo: 'Observações (não vão para o papel)', tipo: 'textarea', valor: a.obs },
+  ];
+}
+
+function modalNovoAuto() {
+  const ultimo = (estado.autos || [])[0] || {};
+  abrirModal({
+    titulo: 'Novo auto de abate',
+    ajuda: 'Junta todos os propostos desta página que ainda não estão num auto.',
+    campos: camposAuto({ numero: (estado.proximoAuto || {}).numero, ano: (estado.proximoAuto || {}).ano, sugerido: true,
+                         comissao1: ultimo.comissao1, comissao2: ultimo.comissao2,
+                         comissao3: ultimo.comissao3, destino: ultimo.destino }),
+    textoGravar: 'Criar o auto',
+    gravar: async d => {
+      const r = await enviar('/autos', d);
+      toast(`Auto de abate n.º ${r.numero_texto} criado.`);
+      await refrescar(null);
+      await abrirAuto(r.id);
+    },
+  });
+}
+
+function modalEditarAuto() {
+  const a = estado.autoAberto;
+  abrirModal({
+    titulo: `Editar o Auto n.º ${a.numero_texto}`,
+    campos: camposAuto(a),
+    gravar: async d => {
+      await enviar(`/autos/${a.id}`, d, 'PUT');
+      toast('Auto gravado.');
+      await abrirAuto(a.id);
+    },
+  });
+}
+
+async function accaoAuto(alvo) {
+  const a = estado.autoAberto;
+  if (alvo.matches('[data-autos]')) return abrirAutos();
+  if (alvo.matches('[data-auto-novo]')) return modalNovoAuto();
+  if (alvo.matches('[data-auto]')) return abrirAuto(Number(alvo.dataset.auto));
+  if (alvo.matches('[data-auto-editar]')) return modalEditarAuto();
+  if (alvo.matches('[data-auto-acrescentar]')) {
+    const r = await enviar(`/autos/${a.id}/acrescentar`, {});
+    toast(r.acrescentados ? `Juntados ${r.acrescentados}.` : 'Não havia propostos novos.', r.acrescentados ? undefined : 'aviso');
+    return abrirAuto(a.id);
+  }
+  if (alvo.matches('[data-auto-tirar]')) {
+    await pedir(`/autos/${a.id}/itens/${alvo.dataset.autoTirar}`, { method: 'DELETE' });
+    toast('Saiu do auto; continua proposto.');
+    return abrirAuto(a.id);
+  }
+  if (alvo.matches('[data-auto-homologar]')) {
+    if (!confirm(`Homologar o Auto n.º ${a.numero_texto}? Os ${a.itens.length} equipamentos ficam abatidos a ${dataPt(a.data)}, e isto não se desfaz.`)) return;
+    const r = await enviar(`/autos/${a.id}/homologar`, {});
+    toast(`Auto homologado: ${r.abatidos} abatidos.`);
+    await refrescar(null);
+    return abrirAuto(a.id);
+  }
+  if (alvo.matches('[data-auto-apagar]')) {
+    if (!confirm(`Apagar o Auto n.º ${a.numero_texto}? Os equipamentos continuam propostos, e o n.º fica livre.`)) return;
+    await pedir(`/autos/${a.id}`, { method: 'DELETE' });
+    toast('Auto apagado.');
+    return abrirAutos();
+  }
+}
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('[data-propor],[data-retirar-abate],#btnAutos,[data-autos],[data-auto-novo],[data-auto],[data-auto-editar],[data-auto-acrescentar],[data-auto-tirar],[data-auto-homologar],[data-auto-apagar]');
+  if (!alvo) return;
+  ev.stopPropagation();
+  try {
+    if (alvo.matches('[data-propor]')) return modalProporAbate(Number(alvo.dataset.propor));
+    if (alvo.matches('[data-retirar-abate]')) return await retirarAbate(Number(alvo.dataset.retirarAbate));
+    if (alvo.id === 'btnAutos') return await abrirAutos();
+    await accaoAuto(alvo);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+}, true);
+
+// ─── Arranque ──────────────────────────────────────────────
+
+/**
+ * O ecrã de paragem — o mesmo das outras páginas e do `iga.html`.
+ *
+ * A `conta` existe porque quem cá chega sem acesso vai ter de pedir a alguém que
+ * lho dê, e a primeira coisa que lhe perguntam do outro lado é "qual é a conta?".
+ * O `#app` esconde-se por baixo: a cortina é opaca, mas sem isto a página ficava
+ * toda navegável pelo Tab por trás dela.
+ */
+function mostrarErro(titulo, detalhe, conta) {
+  document.getElementById('erroTitulo').textContent = titulo;
+  document.getElementById('erroDetalhe').textContent = detalhe || '';
+  const linhaConta = document.getElementById('erroConta');
+  linhaConta.innerHTML = conta
+    ? `Indique esta conta ao pedir o acesso:<span class="block mt-1 font-mono text-sm font-bold text-slate-900 select-all">${esc(conta)}</span>`
+    : '';
+  linhaConta.classList.toggle('hidden', !conta);
+  document.getElementById('app').classList.add('hidden');
+  // O atalho "Saltar para o conteúdo" vive fora do #app: sem isto ficava a ser o
+  // único elemento tabulável com a cortina em cima, e a saltar para o que ela
+  // acabou de esconder.
+  const atalho = document.querySelector('a[href="#conteudo"]');
+  if (atalho) atalho.hidden = true;
+  document.getElementById('ecraErro').classList.remove('hidden');
+}
+
+async function arrancar() {
+  try {
+    estado.permissoes = await pedir('/permissoes', null, API_MODULO);
+  } catch (err) {
+    // O motivo fica no console: a quem está à porta, "Erro 500" não abre nada,
+    // e no dia em que um proxy responda por cima do servidor era o nome da base
+    // a aparecer em ecrã inteiro a toda a gente com IGA-Consulta.
+    console.error('[iga] /permissoes falhou:', (err && err.message) || err);
+    return mostrarErro('Não foi possível confirmar as permissões.',
+      'Volte a carregar a página. Se o problema se mantiver, contacte o NSIC.');
+  }
+  // Sem username não é falta de grupo: é a identificação de domínio que não
+  // chegou, e o caminho para o resolver é outro.
+  if (!estado.permissoes.username) {
+    return mostrarErro('Não foi possível identificar a sua conta.',
+      'O acesso ao inventário é dado à conta de domínio, e esta sessão não trouxe nenhuma. '
+      + 'Volte a carregar a página; se o problema se mantiver, contacte o NSIC.');
+  }
+  if (!estado.permissoes.canView) {
+    return mostrarErro('Acesso reservado ao Inventário e Gestão de Ativos.',
+      'O acesso é dado por grupo. Solicite ao NSIC a inclusão no grupo "IGA" '
+      + '(registo e consulta) ou "IGA-Consulta" (apenas consulta).',
+      estado.permissoes.username);
+  }
+
+  document.getElementById('nomeUtilizador').textContent =
+    estado.permissoes.nome || estado.permissoes.username || '—';
+  document.getElementById('etiquetaAcesso').textContent =
+    estado.permissoes.canAdmin ? 'Administração' : estado.permissoes.canEdit ? 'Escrita' : 'Só consulta';
+  if (estado.permissoes.canEdit) document.getElementById('btnNova').classList.remove('hidden');
+
+  try {
+    await Promise.all([carregarEstatisticas(), carregar()]);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+arrancar();
+</script>
+</body>
+</html>
