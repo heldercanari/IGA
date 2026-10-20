@@ -22,6 +22,7 @@ const router = express.Router();
 const { poolPromise, sql } = require('../../../db');
 const { exigirEdicao, exigirAdmin } = require('./permissoes');
 const { limpar, inteiro, data, hoje, actor, falhou } = require('./comum');
+const { montarAutos, abateDoEquipamento } = require('./autos');
 
 const ESTADOS = ['disponivel', 'atribuido', 'avariado', 'abatido'];
 
@@ -64,7 +65,7 @@ async function recalcularEstado(pool, id) {
     .query(`
       UPDATE dbo.tablets
       SET estado = CASE
-            WHEN EXISTS (SELECT 1 FROM dbo.tablets_abates  WHERE tablet_id = @id) THEN 'abatido'
+            WHEN EXISTS (SELECT 1 FROM dbo.tablets_abates  WHERE tablet_id = @id AND estado = 'abatido') THEN 'abatido'
             WHEN EXISTS (SELECT 1 FROM dbo.tablets_avarias WHERE tablet_id = @id AND estado = 'aberta') THEN 'avariado'
             WHEN EXISTS (SELECT 1 FROM dbo.tablets_atribuicoes WHERE tablet_id = @id AND data_devolucao IS NULL) THEN 'atribuido'
             ELSE 'disponivel'
@@ -98,6 +99,7 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.tablets WHERE estado = 'disponivel')      AS disponiveis,
         (SELECT COUNT(*) FROM dbo.tablets WHERE estado = 'avariado')        AS avariados,
         (SELECT COUNT(*) FROM dbo.tablets WHERE estado = 'abatido')         AS abatidos,
+        (SELECT COUNT(*) FROM dbo.tablets_abates WHERE estado = 'proposto')      AS propostos,
         (SELECT COUNT(*) FROM dbo.tablets WHERE num_inventario IS NULL)     AS sem_inventario,
         (SELECT COUNT(*) FROM dbo.tablets_avarias WHERE estado = 'aberta')  AS avarias_abertas`);
     res.json(r.recordset[0]);
@@ -152,7 +154,7 @@ router.get('/', async (req, res) => {
       SELECT TOP 2000 ${COLUNAS},
         a.id AS atribuicao_id, a.matricula, a.nome_utilizador, a.data_entrega,
         av.id AS avaria_id, av.descricao AS avaria_descricao,
-        ab.data_abate, ab.motivo AS motivo_abate
+        ab.data_abate, ab.motivo AS motivo_abate, ab.estado AS abate_estado
       FROM dbo.tablets t
       OUTER APPLY (
         SELECT TOP 1 * FROM dbo.tablets_atribuicoes x
@@ -178,6 +180,25 @@ router.get('/', async (req, res) => {
 
 // ─── Detalhe ───────────────────────────────────────────────
 
+// ─── Abates e autos de abate ───────────────────────────────
+
+/**
+ * Propor para abate e os autos — ver o `autos.js`. Fica acima do `/:id`
+ * porque o `/autos` é um nome fixo.
+ */
+const AUTOS = {
+  tipo: 'tablets', nome: 'Tablets',
+  pool: poolPromise,
+  equip: 'dbo.tablets', abates: 'dbo.tablets_abates', fk: 'tablet_id',
+  atribuicoes: 'dbo.tablets_atribuicoes',
+  descricao: "CONCAT(N'Tablet', ' ' + e.modelo)",
+  marca: 'e.marca',
+  serie: "e.num_serie",
+  identificacao: 'COALESCE(e.num_inventario, e.numero)',
+  recalcular: recalcularEstado,
+};
+montarAutos(router, AUTOS);
+
 /** O detalhe traz tudo, PIN e PUK incluídos — ver o comentário no topo. */
 router.get('/:id', async (req, res) => {
   try {
@@ -197,8 +218,7 @@ router.get('/:id', async (req, res) => {
          ORDER BY ISNULL(data_entrega, '1900-01-01') DESC, id DESC`),
       pool.request().input('id', sql.Int, id).query(
         'SELECT * FROM dbo.tablets_avarias WHERE tablet_id = @id ORDER BY id DESC'),
-      pool.request().input('id', sql.Int, id).query(
-        'SELECT TOP 1 * FROM dbo.tablets_abates WHERE tablet_id = @id ORDER BY id DESC'),
+      abateDoEquipamento(pool, AUTOS, id),
     ]);
 
     const { pin, puk } = cartao.recordset[0] || {};
@@ -210,7 +230,7 @@ router.get('/:id', async (req, res) => {
       pin_curto: !!(pin && /^\d{1,3}$/.test(pin)),
       atribuicoes: atribuicoes.recordset,
       avarias: avarias.recordset,
-      abate: abate.recordset[0] || null,
+      abate,
     });
   } catch (err) {
     falhou(res, 'obter o tablet', err);
@@ -339,6 +359,11 @@ router.post('/:id/atribuir', exigirEdicao, async (req, res) => {
     if (!tablet) return;
     if (tablet.estado === 'abatido') {
       return res.status(409).json({ error: 'Este tablet está abatido — não pode ser entregue.' });
+    }
+    const proposto = await pool.request().input('id', sql.Int, id)
+      .query(`SELECT 1 AS ok FROM dbo.tablets_abates WHERE tablet_id = @id AND estado = 'proposto'`);
+    if (proposto.recordset.length) {
+      return res.status(409).json({ error: 'Está proposto para abate — não pode ser entregue.' });
     }
 
     const b = req.body || {};
@@ -471,59 +496,6 @@ router.post('/:id/avarias', exigirEdicao, async (req, res) => {
     res.status(201).json({ id: r.recordset[0].id });
   } catch (err) {
     falhou(res, 'registar a avaria', err);
-  }
-});
-
-// ─── Abate ─────────────────────────────────────────────────
-
-router.post('/:id/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    if (!pool) return res.status(500).json({ error: 'Sem ligação à base de dados.' });
-    if (!await tabletOu404(pool, id, res)) return;
-
-    const b = req.body || {};
-    const quando = data(b.data_abate) || hoje();
-
-    const ja = await pool.request().input('id', sql.Int, id)
-      .query('SELECT TOP 1 id FROM dbo.tablets_abates WHERE tablet_id = @id');
-    if (ja.recordset.length) return res.status(409).json({ error: 'Este tablet já está abatido.' });
-
-    await pool.request().input('id', sql.Int, id).input('fim', sql.Date, quando)
-      .query('UPDATE dbo.tablets_atribuicoes SET data_devolucao = @fim WHERE tablet_id = @id AND data_devolucao IS NULL');
-
-    await pool.request()
-      .input('tid', sql.Int, id)
-      .input('quando', sql.Date, quando)
-      .input('motivo', sql.NVarChar(200), limpar(b.motivo))
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .input('por', sql.NVarChar(120), actor(req))
-      .query(`INSERT INTO dbo.tablets_abates (tablet_id, data_abate, motivo, obs, registado_por)
-              VALUES (@tid, @quando, @motivo, @obs, @por)`);
-
-    await recalcularEstado(pool, id);
-    res.status(201).json({ ok: true });
-  } catch (err) {
-    falhou(res, 'registar o abate', err);
-  }
-});
-
-router.delete('/:id/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-    const pool = await poolPromise;
-    if (!pool) return res.status(500).json({ error: 'Sem ligação à base de dados.' });
-    const r = await pool.request().input('id', sql.Int, id)
-      .query('DELETE FROM dbo.tablets_abates WHERE tablet_id = @id');
-    if (!r.rowsAffected[0]) return res.status(404).json({ error: 'Este tablet não está abatido.' });
-    await recalcularEstado(pool, id);
-    res.json({ ok: true });
-  } catch (err) {
-    falhou(res, 'anular o abate', err);
   }
 });
 

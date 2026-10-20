@@ -15,11 +15,11 @@ Cinco tipos de activo, uma página para cada:
 - **Telemóveis** — 300 aparelhos. Carregado do `Livro 1.xlsx` (`C:\Apps\telemoveis`, uma folha).
 - **Impressoras** — 16 multifunções Konica Minolta. Carregado do `impressoras Konica.xlsx`
   (`C:\Apps\`, uma folha). **Este tipo não segue o molde dos outros dois**: uma impressora não
-  é entregue a ninguém, está instalada num serviço — não tem entregas, avarias, abates nem
-  coluna `estado`. O que se guarda dela é onde está.
+  é entregue a ninguém, está instalada num serviço — não tem entregas, avarias nem coluna
+  `estado`. O que se guarda dela é onde está (e, desde a `006`, se foi abatida).
 - **Máquinas fotográficas** — 15 Kodak PIXPRO WPZ2 com cartão de memória. Carregado da folha
   `Kodak PIXPRO` do `Kodak.xlsx` (`C:\Apps\`, o livro geral do NSIC com 27 folhas). **Tem
-  entregas** — uma máquina é levantada por alguém —, mas não tem avarias, abates nem coluna
+  entregas** — uma máquina é levantada por alguém — e abates, mas não tem avarias nem coluna
   `estado`: está entregue quem tiver um levantamento por devolver.
 - **Tablets** — 34 Samsung Galaxy Tab, das três folhas "Tablet…" do `IpsImpressoras e
   consumiveis.xlsx` (OneDrive do NSIC). Molde completo dos telemóveis — entregas a pessoas,
@@ -91,6 +91,10 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\004_maquinas.sql
 sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\005_tablets.sql
 ```
 
+```bash
+sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\006_autos_abate.sql
+```
+
 - `000_seed_local.sql` — andaime de desenvolvimento: cria `colaboradores`, `grupos`,
   `grupo_membros` e `admin_users` com utilizadores de teste. **Não é uma migração da
   intranet**; lá estas tabelas já existem.
@@ -103,7 +107,10 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\005_tablets.sql
   (`_atribuicoes`, `_avarias`, `_abates` e `estado`) e sem tabela de importações.
 - `004_maquinas.sql` — as máquinas fotográficas, também nesta base. Leva `maquinas_atribuicoes`
   (ao contrário das impressoras: uma máquina é levantada por alguém), mas continua sem
-  `_avarias`, `_abates` e sem coluna `estado`.
+  `_avarias` e sem coluna `estado`.
+- `006_autos_abate.sql` — os autos de abate: o cabeçalho (`autos_abate`), o estado
+  proposto/abatido nos abates que já existiam, e `impressoras_abates` e `maquinas_abates`.
+  Ver *Autos de abate*, abaixo.
 
 ### A segunda base: telemóveis
 
@@ -124,6 +131,12 @@ sqlcmd -S localhost -E -d TelemoveisDev -I -Q "CREATE USER radios_dev FOR LOGIN 
 ```bash
 sqlcmd -S localhost -E -d TelemoveisDev -I -f 65001 -i migrations\002_telemoveis.sql
 ```
+
+```bash
+sqlcmd -S localhost -E -d TelemoveisDev -I -f 65001 -i migrations\007_autos_abate_telemoveis.sql
+```
+
+A `007` é a parte da `006` que toca no `telemoveis_abates`: corre na base dos telemóveis.
 
 ## Os dados
 
@@ -229,8 +242,8 @@ não sai no CSV.
 
 **Impressoras** — 16 multifunções Konica Minolta com marca, modelo, número de série, IP, host
 name e o serviço onde estão. **É o ecrã mais pequeno dos três, e não por estar por acabar**: as
-impressoras não são entregues a pessoas, não têm avarias nem abates registados aqui, e por isso
-não há estado nenhum a acompanhar. As acções são ver a ficha, **mudar de serviço** (a do
+impressoras não são entregues a pessoas e não têm avarias registadas aqui, e por isso não há
+estado nenhum a acompanhar — só se foi abatida, desde os autos de abate. As acções são ver a ficha, **mudar de serviço** (a do
 dia-a-dia), editar e apagar. Os KPI contam o sítio — instaladas, serviços diferentes, modelos e
 as que estão sem local, que é a única coisa aqui que é trabalho por fazer.
 
@@ -281,6 +294,30 @@ tudo**, o PIN e o PUK incluídos e sem botão "mostrar" — ao contrário dos te
 > e as entregas à Divisão de Trânsito (05/02/2026) ficaram nas observações, porque foram a um
 > serviço e não a alguém.
 
+## Autos de abate
+
+Abater faz-se em três passos, em qualquer página de equipamento, **uma categoria por auto**:
+
+1. **Propor para abate** — o botão do arquivo na linha (quem tem edição). Pede o motivo e se
+   está **apto para doação** (com as características técnicas, se estiver). O equipamento fica
+   com a etiqueta "p/ abate", mantém o estado que tinha, e **não se entrega**.
+2. **Montar o auto** — botão **Autos de abate** → *Novo auto*: junta os propostos dessa página
+   que ainda não estão num auto, e abre uma janela com o que o modelo pede — **n.º do auto**,
+   data, **elementos da comissão**, **valor do auto** e **entidade responsável** pelo
+   equipamento a abater. O n.º vem sugerido (o seguinte ao último do ano), mas escreve-se o do
+   papel; a numeração é uma só para todas as categorias, e um n.º já usado é recusado. A
+   comissão e a entidade vêm do auto anterior.
+3. **Imprimir e homologar** — *Imprimir o auto* dá o PDF: a 1.ª folha é o **modelo da DMSI**
+   preenchido, e com mais de 10 equipamentos segue um **anexo** com a lista toda. Quando o auto
+   vier assinado, *Homologar* (administração): fica tudo abatido na data do auto, e as entregas
+   que houvesse fecham.
+
+Enquanto é rascunho, o auto edita-se, recebe propostos novos e larga linhas (que voltam a ficar
+propostas), e apagado. Um auto homologado não se altera, e um abate feito por ele não se
+anula.
+
+O **Auto 02/2023** (148 rádios) está lançado, homologado, a partir do documento digitalizado.
+
 ## API
 
 Tudo debaixo de `/api/iga`. O gate de VER está aplicado ao router inteiro; as mutações
@@ -298,7 +335,10 @@ e o `/permissoes` é do módulo, comum aos cinco.
 | POST | `<tipo>/:id/atribuir` · `/devolver` | editar (menos impressoras) |
 | POST | `<tipo>/:id/avarias` | editar (rádios, telemóveis e tablets) |
 | POST | `<tipo>/avarias/:id/reparar` | editar (rádios, telemóveis e tablets) |
-| POST · DELETE | `<tipo>/:id/abate` | administração (rádios, telemóveis e tablets) |
+| POST · DELETE | `<tipo>/:id/abate` | editar — propor e retirar a proposta (todos) |
+| GET · POST · PUT · DELETE | `<tipo>/autos` · `<tipo>/autos/:auto` · `/acrescentar` · `/itens/:abate` | ver / editar |
+| GET | `<tipo>/autos/:auto/pdf` | ver |
+| POST | `<tipo>/autos/:auto/homologar` | administração |
 | DELETE | `<tipo>/:id` | administração |
 | GET | `radios/sistema` · `radios/conferencia` · `radios/utilizadores` | ver (só rádios) |
 | GET | `telemoveis/:id/credenciais` | administração (só telemóveis) |
@@ -337,9 +377,13 @@ fotográficas (`004`) são os precedentes, e escolheram diferente:
 
 | | `_atribuicoes` | `_avarias` / `_abates` | coluna `estado` |
 |---|---|---|---|
-| rádios, telemóveis, tablets | sim | sim | sim, com `recalcularEstado()` |
-| impressoras | **não** — não se entregam | não | **não** |
-| máquinas fotográficas | **sim** — levantam-se | não | **não** — lê-se da entrega aberta |
+| rádios, telemóveis, tablets | sim | sim / sim | sim, com `recalcularEstado()` |
+| impressoras | **não** — não se entregam | não / **sim** | **não** |
+| máquinas fotográficas | **sim** — levantam-se | não / **sim** | **não** — lê-se da entrega aberta |
+
+**Todos os tipos levam `_abates`** desde a `006`, porque todo o equipamento vai a auto de
+abate: a tabela no molde do `impressoras_abates`, o tipo acrescentado ao `CHECK` do
+`autos_abate.tipo`, e uma chamada a `montarAutos()` no router, antes do `/:id`.
 
 Um tipo que não se entregue a pessoas não leva `_atribuicoes`; um que não tenha avarias
 registadas não leva `_avarias` nem `_abates`. E **a coluna `estado` só se justifica com a
@@ -354,7 +398,7 @@ desligados no ecrã. O que não muda são os cinco passos acima e os grupos de a
 |---|---|
 | `IGA` | ver + registar/editar |
 | `IGA-Consulta` | só ver |
-| `IGA-Admin` | + abater e apagar |
+| `IGA-Admin` | + homologar autos de abate e apagar |
 
 A gestão é pela consola AD-PM, como qualquer outro grupo. O administrador da consola
 (`admin_users`) entra em tudo **excepto** na administração do módulo — essa é só do grupo.

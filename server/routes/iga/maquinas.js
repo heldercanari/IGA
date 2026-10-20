@@ -26,6 +26,7 @@ const router = express.Router();
 const { poolPromise, sql } = require('../../../db');
 const { exigirEdicao, exigirAdmin } = require('./permissoes');
 const { limpar, inteiro, data, hoje, actor, falhou } = require('./comum');
+const { montarAutos, abateDoEquipamento } = require('./autos');
 
 /** As colunas que saem daqui. Escritas uma a uma, como no resto do módulo. */
 const COLUNAS = `m.id, m.pm_id, m.marca, m.modelo, m.num_serie,
@@ -129,8 +130,10 @@ router.get('/estatisticas', async (req, res) => {
       SELECT
         (SELECT COUNT(*) FROM dbo.maquinas)                                          AS total,
         (SELECT COUNT(DISTINCT maquina_id) FROM abertas)                             AS entregues,
-        (SELECT COUNT(*) FROM dbo.maquinas
-          WHERE id NOT IN (SELECT maquina_id FROM abertas))                          AS disponiveis,
+        (SELECT COUNT(*) FROM dbo.maquinas m
+          WHERE id NOT IN (SELECT maquina_id FROM abertas) AND NOT EXISTS (SELECT 1 FROM dbo.maquinas_abates b WHERE b.maquina_id = m.id AND b.estado = 'abatido'))      AS disponiveis,
+        (SELECT COUNT(*) FROM dbo.maquinas_abates WHERE estado = 'abatido')          AS abatidas,
+        (SELECT COUNT(*) FROM dbo.maquinas_abates WHERE estado = 'proposto')         AS propostos,
         (SELECT COUNT(*) FROM abertas WHERE data_entrega IS NULL)                    AS entregas_sem_data,
         (SELECT COUNT(*) FROM dbo.maquinas WHERE num_serie IS NULL)                  AS sem_serie`);
     res.json(r.recordset[0]);
@@ -165,14 +168,18 @@ router.get('/', async (req, res) => {
     }
     const estado = limpar(req.query.estado);
     if (estado === 'entregue') filtros.push('a.id IS NOT NULL');
-    else if (estado === 'disponivel') filtros.push('a.id IS NULL');
+    else if (estado === 'disponivel') filtros.push("a.id IS NULL AND ISNULL(ab.estado, '') <> 'abatido'");
+    else if (estado === 'abatida') filtros.push("ab.estado = 'abatido'");
 
     const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
     const r = await pedido.query(`
       SELECT TOP 2000 ${COLUNAS},
-        a.id AS atribuicao_id, a.matricula, a.nome_utilizador, a.data_entrega
+        a.id AS atribuicao_id, a.matricula, a.nome_utilizador, a.data_entrega,
+        ab.estado AS abate_estado, ab.data_abate
       FROM dbo.maquinas m
       ${ENTREGA_ABERTA}
+      OUTER APPLY (SELECT TOP 1 estado, data_abate FROM dbo.maquinas_abates x
+                   WHERE x.maquina_id = m.id ORDER BY x.id DESC) ab
       ${where}
       ORDER BY m.pm_id, m.id`);
 
@@ -181,6 +188,26 @@ router.get('/', async (req, res) => {
     falhou(res, 'listar as máquinas', err);
   }
 });
+
+// ─── Abates e autos de abate ───────────────────────────────
+
+/**
+ * Propor para abate e os autos — ver o `autos.js` e a migração 006. Continua
+ * sem `estado`: abatida é ter um abate homologado, como entregue é ter uma
+ * entrega aberta. A homologação fecha a entrega que houver.
+ */
+const AUTOS = {
+  tipo: 'maquinas', nome: 'Máquinas fotográficas',
+  pool: poolPromise,
+  equip: 'dbo.maquinas', abates: 'dbo.maquinas_abates', fk: 'maquina_id',
+  atribuicoes: 'dbo.maquinas_atribuicoes',
+  descricao: "CONCAT(N'Máquina fotográfica', ' ' + e.modelo)",
+  marca: 'e.marca',
+  serie: 'e.num_serie',
+  identificacao: 'COALESCE(e.pm_id, e.num_serie)',
+  recalcular: null,
+};
+montarAutos(router, AUTOS);
 
 // ─── Detalhe ───────────────────────────────────────────────
 
@@ -199,7 +226,7 @@ router.get('/:id', async (req, res) => {
       `SELECT * FROM dbo.maquinas_atribuicoes WHERE maquina_id = @id
        ORDER BY ISNULL(data_entrega, '1900-01-01') DESC, id DESC`);
 
-    res.json({ ...maquina, atribuicoes: atribuicoes.recordset });
+    res.json({ ...maquina, atribuicoes: atribuicoes.recordset, abate: await abateDoEquipamento(pool, AUTOS, id) });
   } catch (err) {
     falhou(res, 'obter a máquina', err);
   }
@@ -300,6 +327,13 @@ router.post('/:id/atribuir', exigirEdicao, async (req, res) => {
     const pool = await poolPromise;
     if (!pool) return res.status(500).json({ error: 'Sem ligação à base de dados.' });
     if (!await maquinaOu404(pool, id, res)) return;
+    const abate = await pool.request().input('id', sql.Int, id)
+      .query('SELECT TOP 1 estado FROM dbo.maquinas_abates WHERE maquina_id = @id');
+    if (abate.recordset.length) {
+      return res.status(409).json({ error: abate.recordset[0].estado === 'abatido'
+        ? 'Esta máquina está abatida — não pode ser entregue.'
+        : 'Está proposta para abate — não pode ser entregue.' });
+    }
 
     const b = req.body || {};
     const nome = limpar(b.nome_utilizador);

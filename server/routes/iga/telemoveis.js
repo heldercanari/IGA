@@ -28,6 +28,7 @@ const router = express.Router();
 const { poolPromise, sql } = require('../../../db-telemoveis');
 const { exigirEdicao, exigirAdmin } = require('./permissoes');
 const { limpar, inteiro, data, hoje, actor, falhou } = require('./comum');
+const { montarAutos, abateDoEquipamento } = require('./autos');
 
 const ESTADOS = ['disponivel', 'atribuido', 'avariado', 'abatido'];
 
@@ -42,7 +43,7 @@ async function recalcularEstado(pool, id) {
     .query(`
       UPDATE dbo.telemoveis
       SET estado = CASE
-            WHEN EXISTS (SELECT 1 FROM dbo.telemoveis_abates  WHERE telemovel_id = @id) THEN 'abatido'
+            WHEN EXISTS (SELECT 1 FROM dbo.telemoveis_abates  WHERE telemovel_id = @id AND estado = 'abatido') THEN 'abatido'
             WHEN EXISTS (SELECT 1 FROM dbo.telemoveis_avarias WHERE telemovel_id = @id AND estado = 'aberta') THEN 'avariado'
             WHEN EXISTS (SELECT 1 FROM dbo.telemoveis_atribuicoes WHERE telemovel_id = @id AND data_devolucao IS NULL) THEN 'atribuido'
             ELSE 'disponivel'
@@ -76,6 +77,7 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.telemoveis WHERE estado = 'disponivel')        AS disponiveis,
         (SELECT COUNT(*) FROM dbo.telemoveis WHERE estado = 'avariado')          AS avariados,
         (SELECT COUNT(*) FROM dbo.telemoveis WHERE estado = 'abatido')           AS abatidos,
+        (SELECT COUNT(*) FROM dbo.telemoveis_abates WHERE estado = 'proposto')      AS propostos,
         (SELECT COUNT(*) FROM dbo.telemoveis WHERE numero IS NULL)               AS sem_numero,
         (SELECT COUNT(*) FROM dbo.telemoveis_avarias WHERE estado = 'aberta')    AS avarias_abertas`);
     res.json(r.recordset[0]);
@@ -114,7 +116,7 @@ router.get('/', async (req, res) => {
       SELECT TOP 2000 ${COLUNAS},
         a.id AS atribuicao_id, a.matricula, a.nome_utilizador, a.data_entrega,
         av.id AS avaria_id, av.descricao AS avaria_descricao,
-        ab.data_abate, ab.motivo AS motivo_abate
+        ab.data_abate, ab.motivo AS motivo_abate, ab.estado AS abate_estado
       FROM dbo.telemoveis t
       OUTER APPLY (
         SELECT TOP 1 * FROM dbo.telemoveis_atribuicoes x
@@ -173,6 +175,25 @@ router.get('/:id/credenciais', exigirAdmin, async (req, res) => {
 
 // ─── Detalhe ───────────────────────────────────────────────
 
+// ─── Abates e autos de abate ───────────────────────────────
+
+/**
+ * Propor para abate e os autos — ver o `autos.js`. Fica acima do `/:id`
+ * porque o `/autos` é um nome fixo.
+ */
+const AUTOS = {
+  tipo: 'telemoveis', nome: 'Telemóveis',
+  pool: poolPromise,
+  equip: 'dbo.telemoveis', abates: 'dbo.telemoveis_abates', fk: 'telemovel_id',
+  atribuicoes: 'dbo.telemoveis_atribuicoes',
+  descricao: "CONCAT(N'Telemóvel', ' ' + e.modelo)",
+  marca: 'e.marca',
+  serie: "COALESCE(N'IMEI ' + e.imei1, N'n.º ' + e.numero)",
+  identificacao: 'COALESCE(e.numero, e.imei1)',
+  recalcular: recalcularEstado,
+};
+montarAutos(router, AUTOS);
+
 router.get('/:id', async (req, res) => {
   try {
     const id = inteiro(req.params.id);
@@ -190,15 +211,14 @@ router.get('/:id', async (req, res) => {
          ORDER BY ISNULL(data_entrega, '1900-01-01') DESC, id DESC`),
       pool.request().input('id', sql.Int, id).query(
         'SELECT * FROM dbo.telemoveis_avarias WHERE telemovel_id = @id ORDER BY id DESC'),
-      pool.request().input('id', sql.Int, id).query(
-        'SELECT TOP 1 * FROM dbo.telemoveis_abates WHERE telemovel_id = @id ORDER BY id DESC'),
+      abateDoEquipamento(pool, AUTOS, id),
     ]);
 
     res.json({
       ...telemovel,
       atribuicoes: atribuicoes.recordset,
       avarias: avarias.recordset,
-      abate: abate.recordset[0] || null,
+      abate,
     });
   } catch (err) {
     falhou(res, 'obter o telemóvel', err);
@@ -333,6 +353,11 @@ router.post('/:id/atribuir', exigirEdicao, async (req, res) => {
     if (telemovel.estado === 'abatido') {
       return res.status(409).json({ error: 'Este telemóvel está abatido — não pode ser entregue.' });
     }
+    const proposto = await pool.request().input('id', sql.Int, id)
+      .query(`SELECT 1 AS ok FROM dbo.telemoveis_abates WHERE telemovel_id = @id AND estado = 'proposto'`);
+    if (proposto.recordset.length) {
+      return res.status(409).json({ error: 'Está proposto para abate — não pode ser entregue.' });
+    }
 
     const b = req.body || {};
     const nome = limpar(b.nome_utilizador);
@@ -465,59 +490,6 @@ router.post('/:id/avarias', exigirEdicao, async (req, res) => {
     res.status(201).json({ id: r.recordset[0].id });
   } catch (err) {
     falhou(res, 'registar a avaria', err);
-  }
-});
-
-// ─── Abate ─────────────────────────────────────────────────
-
-router.post('/:id/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    if (!pool) return res.status(500).json({ error: 'Sem ligação à base dos telemóveis.' });
-    if (!await telemovelOu404(pool, id, res)) return;
-
-    const b = req.body || {};
-    const quando = data(b.data_abate) || hoje();
-
-    const ja = await pool.request().input('id', sql.Int, id)
-      .query('SELECT TOP 1 id FROM dbo.telemoveis_abates WHERE telemovel_id = @id');
-    if (ja.recordset.length) return res.status(409).json({ error: 'Este telemóvel já está abatido.' });
-
-    await pool.request().input('id', sql.Int, id).input('fim', sql.Date, quando)
-      .query('UPDATE dbo.telemoveis_atribuicoes SET data_devolucao = @fim WHERE telemovel_id = @id AND data_devolucao IS NULL');
-
-    await pool.request()
-      .input('tid', sql.Int, id)
-      .input('quando', sql.Date, quando)
-      .input('motivo', sql.NVarChar(200), limpar(b.motivo))
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .input('por', sql.NVarChar(120), actor(req))
-      .query(`INSERT INTO dbo.telemoveis_abates (telemovel_id, data_abate, motivo, obs, registado_por)
-              VALUES (@tid, @quando, @motivo, @obs, @por)`);
-
-    await recalcularEstado(pool, id);
-    res.status(201).json({ ok: true });
-  } catch (err) {
-    falhou(res, 'registar o abate', err);
-  }
-});
-
-router.delete('/:id/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-    const pool = await poolPromise;
-    if (!pool) return res.status(500).json({ error: 'Sem ligação à base dos telemóveis.' });
-    const r = await pool.request().input('id', sql.Int, id)
-      .query('DELETE FROM dbo.telemoveis_abates WHERE telemovel_id = @id');
-    if (!r.rowsAffected[0]) return res.status(404).json({ error: 'Este telemóvel não está abatido.' });
-    await recalcularEstado(pool, id);
-    res.json({ ok: true });
-  } catch (err) {
-    falhou(res, 'anular o abate', err);
   }
 });
 

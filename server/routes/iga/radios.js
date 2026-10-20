@@ -34,6 +34,7 @@ const router = express.Router();
 const { poolPromise, sql } = require('../../../db');
 const { exigirEdicao, exigirAdmin } = require('./permissoes');
 const { limpar, inteiro, data, hoje, actor, falhou } = require('./comum');
+const { montarAutos, abateDoEquipamento } = require('./autos');
 
 const ESTADOS = ['disponivel', 'atribuido', 'avariado', 'abatido'];
 
@@ -55,7 +56,7 @@ async function recalcularEstado(pool, radioId) {
     .query(`
       UPDATE dbo.radios
       SET estado = CASE
-            WHEN EXISTS (SELECT 1 FROM dbo.radios_abates  WHERE radio_id = @id) THEN 'abatido'
+            WHEN EXISTS (SELECT 1 FROM dbo.radios_abates  WHERE radio_id = @id AND estado = 'abatido') THEN 'abatido'
             WHEN EXISTS (SELECT 1 FROM dbo.radios_avarias WHERE radio_id = @id AND estado = 'aberta') THEN 'avariado'
             WHEN EXISTS (SELECT 1 FROM dbo.radios_atribuicoes WHERE radio_id = @id AND data_devolucao IS NULL) THEN 'atribuido'
             ELSE 'disponivel'
@@ -89,6 +90,7 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.radios WHERE estado = 'disponivel')                  AS disponiveis,
         (SELECT COUNT(*) FROM dbo.radios WHERE estado = 'avariado')                    AS avariados,
         (SELECT COUNT(*) FROM dbo.radios WHERE estado = 'abatido')                     AS abatidos,
+        (SELECT COUNT(*) FROM dbo.radios_abates WHERE estado = 'proposto')      AS propostos,
         (SELECT COUNT(*) FROM dbo.radios WHERE num_serie IS NULL)                      AS sem_serie,
         (SELECT COUNT(*) FROM dbo.radios_avarias WHERE estado = 'aberta')              AS avarias_abertas,
         (SELECT COUNT(*) FROM dbo.radios_sistema)                                      AS no_sistema,
@@ -300,7 +302,7 @@ router.get('/', async (req, res) => {
         r.tie, r.estado, r.obs,
         a.id AS atribuicao_id, a.matricula, a.nome_utilizador, a.data_entrega, a.guia,
         av.id AS avaria_id, av.tipo_avaria, av.ordem, av.localizacao,
-        ab.data_abate, ab.motivo AS motivo_abate
+        ab.data_abate, ab.motivo AS motivo_abate, ab.estado AS abate_estado
       FROM dbo.radios r
       OUTER APPLY (
         SELECT TOP 1 * FROM dbo.radios_atribuicoes x
@@ -326,6 +328,25 @@ router.get('/', async (req, res) => {
 });
 
 /** GET /radios/:id — o equipamento com todo o historial e o que o sistema sabe dele. */
+// ─── Abates e autos de abate ───────────────────────────────
+
+/**
+ * Propor para abate e os autos — ver o `autos.js`. Fica acima do `/:id`
+ * porque o `/autos` é um nome fixo.
+ */
+const AUTOS = {
+  tipo: 'radios', nome: 'Rádios',
+  pool: poolPromise,
+  equip: 'dbo.radios', abates: 'dbo.radios_abates', fk: 'radio_id',
+  atribuicoes: 'dbo.radios_atribuicoes',
+  descricao: "CONCAT(N'Rádio', ' ' + e.modelo)",
+  marca: 'e.marca',
+  serie: "e.num_serie",
+  identificacao: 'COALESCE(e.indicativo, e.num_serie)',
+  recalcular: recalcularEstado,
+};
+montarAutos(router, AUTOS);
+
 router.get('/:id', async (req, res) => {
   try {
     const id = inteiro(req.params.id);
@@ -340,8 +361,7 @@ router.get('/:id', async (req, res) => {
         'SELECT * FROM dbo.radios_atribuicoes WHERE radio_id = @id ORDER BY ISNULL(data_entrega, \'1900-01-01\') DESC, id DESC'),
       pool.request().input('id', sql.Int, id).query(
         'SELECT * FROM dbo.radios_avarias WHERE radio_id = @id ORDER BY id DESC'),
-      pool.request().input('id', sql.Int, id).query(
-        'SELECT TOP 1 * FROM dbo.radios_abates WHERE radio_id = @id ORDER BY id DESC'),
+      abateDoEquipamento(pool, AUTOS, id),
       // O cruzamento com o TETRA é por série, e só por série: o alias também dá
       // um palpite, mas é texto escrito à mão em duas listas diferentes.
       pool.request().input('serie', sql.NVarChar(60), radio.num_serie).query(
@@ -352,7 +372,7 @@ router.get('/:id', async (req, res) => {
       ...radio,
       atribuicoes: atribuicoes.recordset,
       avarias: avarias.recordset,
-      abate: abate.recordset[0] || null,
+      abate,
       sistema: sistema.recordset[0] || null,
     });
   } catch (err) {
@@ -470,6 +490,11 @@ router.post('/:id/atribuir', exigirEdicao, async (req, res) => {
     if (!radio) return;
     if (radio.estado === 'abatido') {
       return res.status(409).json({ error: 'Este rádio está abatido — não pode ser entregue.' });
+    }
+    const proposto = await pool.request().input('id', sql.Int, id)
+      .query(`SELECT 1 AS ok FROM dbo.radios_abates WHERE radio_id = @id AND estado = 'proposto'`);
+    if (proposto.recordset.length) {
+      return res.status(409).json({ error: 'Está proposto para abate — não pode ser entregue.' });
     }
 
     const b = req.body || {};
@@ -608,67 +633,6 @@ router.post('/avarias/:id/reparar', exigirEdicao, async (req, res) => {
     res.json({ ok: true, radio_id: linha.radio_id });
   } catch (err) {
     falhou(res, 'fechar a avaria', err);
-  }
-});
-
-// ─── Abate ─────────────────────────────────────────────────
-
-/**
- * POST /radios/:id/abate — tira o equipamento do parque sem o apagar.
- * A atribuição activa é fechada: um rádio abatido não pode continuar entregue.
- */
-router.post('/:id/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-
-    const pool = await poolPromise;
-    const radio = await radioOu404(pool, id, res);
-    if (!radio) return;
-
-    const b = req.body || {};
-    const quando = data(b.data_abate) || hoje();
-
-    const jaAbatido = await pool.request()
-      .input('id', sql.Int, id)
-      .query('SELECT TOP 1 id FROM dbo.radios_abates WHERE radio_id = @id');
-    if (jaAbatido.recordset.length) {
-      return res.status(409).json({ error: 'Este rádio já está abatido.' });
-    }
-
-    await pool.request()
-      .input('id', sql.Int, id).input('fim', sql.Date, quando)
-      .query('UPDATE dbo.radios_atribuicoes SET data_devolucao = @fim WHERE radio_id = @id AND data_devolucao IS NULL');
-
-    await pool.request()
-      .input('radio_id', sql.Int, id)
-      .input('quando', sql.Date, quando)
-      .input('motivo', sql.NVarChar(200), limpar(b.motivo))
-      .input('obs', sql.NVarChar(sql.MAX), limpar(b.obs))
-      .input('por', sql.NVarChar(120), actor(req))
-      .query(`INSERT INTO dbo.radios_abates (radio_id, data_abate, motivo, obs, registado_por)
-              VALUES (@radio_id, @quando, @motivo, @obs, @por)`);
-
-    await recalcularEstado(pool, id);
-    res.status(201).json({ ok: true });
-  } catch (err) {
-    falhou(res, 'registar o abate', err);
-  }
-});
-
-/** Anular um abate feito por engano — o rádio volta ao parque. */
-router.delete('/:id/abate', exigirAdmin, async (req, res) => {
-  try {
-    const id = inteiro(req.params.id);
-    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
-    const pool = await poolPromise;
-    const r = await pool.request().input('id', sql.Int, id)
-      .query('DELETE FROM dbo.radios_abates WHERE radio_id = @id');
-    if (!r.rowsAffected[0]) return res.status(404).json({ error: 'Este rádio não está abatido.' });
-    await recalcularEstado(pool, id);
-    res.json({ ok: true });
-  } catch (err) {
-    falhou(res, 'anular o abate', err);
   }
 });
 

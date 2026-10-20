@@ -25,6 +25,7 @@ const router = express.Router();
 const { poolPromise, sql } = require('../../../db');
 const { exigirEdicao, exigirAdmin } = require('./permissoes');
 const { limpar, inteiro, falhou } = require('./comum');
+const { montarAutos, abateDoEquipamento } = require('./autos');
 
 /** As colunas que saem daqui. Escritas uma a uma, como no resto do módulo. */
 const COLUNAS = `i.id, i.marca, i.modelo, i.num_serie, i.localizacao, i.ip,
@@ -113,8 +114,12 @@ router.get('/estatisticas', async (req, res) => {
     const r = await pool.request().query(`
       SELECT
         (SELECT COUNT(*) FROM dbo.impressoras)                                        AS total,
-        (SELECT COUNT(*) FROM dbo.impressoras WHERE localizacao IS NOT NULL)          AS com_local,
-        (SELECT COUNT(*) FROM dbo.impressoras WHERE localizacao IS NULL)              AS sem_local,
+        -- As abatidas saem das duas parcelas e fazem a terceira: a partição do
+        -- cartão (instaladas, sem local, abatidas) tem de somar ao total.
+        (SELECT COUNT(*) FROM dbo.impressoras i WHERE localizacao IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.impressoras_abates b WHERE b.impressora_id = i.id AND b.estado = 'abatido')) AS com_local,
+        (SELECT COUNT(*) FROM dbo.impressoras i WHERE localizacao IS NULL AND NOT EXISTS (SELECT 1 FROM dbo.impressoras_abates b WHERE b.impressora_id = i.id AND b.estado = 'abatido'))     AS sem_local,
+        (SELECT COUNT(*) FROM dbo.impressoras_abates WHERE estado = 'abatido')       AS abatidas,
+        (SELECT COUNT(*) FROM dbo.impressoras_abates WHERE estado = 'proposto')      AS propostos,
         (SELECT COUNT(DISTINCT localizacao) FROM dbo.impressoras WHERE localizacao IS NOT NULL) AS locais,
         (SELECT COUNT(DISTINCT modelo) FROM dbo.impressoras WHERE modelo IS NOT NULL) AS modelos,
         (SELECT COUNT(*) FROM dbo.impressoras WHERE ip IS NULL)                       AS sem_ip`);
@@ -190,8 +195,11 @@ router.get('/', async (req, res) => {
 
     const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
     const r = await pedido.query(`
-      SELECT TOP 2000 ${COLUNAS}
+      SELECT TOP 2000 ${COLUNAS},
+        ab.estado AS abate_estado, ab.data_abate
       FROM dbo.impressoras i
+      OUTER APPLY (SELECT TOP 1 estado, data_abate FROM dbo.impressoras_abates x
+                   WHERE x.impressora_id = i.id ORDER BY x.id DESC) ab
       ${where}
       ORDER BY i.localizacao, i.num_serie, i.id`);
 
@@ -200,6 +208,25 @@ router.get('/', async (req, res) => {
     falhou(res, 'listar as impressoras', err);
   }
 });
+
+// ─── Abates e autos de abate ───────────────────────────────
+
+/**
+ * Propor para abate e os autos — ver o `autos.js` e a migração 006. Sem
+ * entregas nem `estado`: abatida é ter um abate homologado, e mais nada.
+ */
+const AUTOS = {
+  tipo: 'impressoras', nome: 'Impressoras',
+  pool: poolPromise,
+  equip: 'dbo.impressoras', abates: 'dbo.impressoras_abates', fk: 'impressora_id',
+  atribuicoes: null,
+  descricao: "CONCAT(N'Impressora multifunções', ' ' + e.modelo)",
+  marca: 'e.marca',
+  serie: 'e.num_serie',
+  identificacao: 'COALESCE(e.host_name, e.num_serie)',
+  recalcular: null,
+};
+montarAutos(router, AUTOS);
 
 // ─── Detalhe ───────────────────────────────────────────────
 
@@ -214,8 +241,8 @@ router.get('/:id', async (req, res) => {
     const impressora = await impressoraOu404(pool, id, res);
     if (!impressora) return;
 
-    // Sem entregas, avarias nem abates para juntar: a ficha é a linha.
-    res.json(impressora);
+    // Sem entregas nem avarias: a ficha é a linha, mais o abate se o houver.
+    res.json({ ...impressora, abate: await abateDoEquipamento(pool, AUTOS, id) });
   } catch (err) {
     falhou(res, 'obter a impressora', err);
   }

@@ -129,6 +129,9 @@
             <button id="btnNovo" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
                 + Novo tablet
             </button>
+            <button id="btnAutos" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                Autos de abate
+            </button>
             <button id="btnExportar" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
                 Exportar CSV
             </button>
@@ -331,15 +334,15 @@ function desenhar() {
         ${t.localizacao ? `<div class="text-[11px] text-slate-600">${esc(t.localizacao)}</div>` : ''}</td>
       <td class="px-3 py-2">${entregue}</td>
       <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${t.data_entrega ? dataPt(t.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
-      <td class="px-3 py-2">${etiqueta(t.estado)}</td>
+      <td class="px-3 py-2">${etiqueta(t.estado)}${etiquetaAbate(t.abate_estado === 'proposto' ? 'proposto' : '')}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
-        <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${t.id}" title="Entregar" ${podeEditar && t.estado !== 'abatido' ? '' : 'disabled'}>
+        <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${t.id}" title="Entregar" ${podeEditar && t.estado !== 'abatido' && !t.abate_estado ? '' : 'disabled'}>
           <i data-lucide="user-plus" class="w-4 h-4"></i></button>
         <button class="accao text-emerald-600 hover:bg-emerald-50" data-devolver="${t.id}" title="Devolver" ${podeEditar && t.atribuicao_id ? '' : 'disabled'}>
           <i data-lucide="undo-2" class="w-4 h-4"></i></button>
         <button class="accao text-amber-600 hover:bg-amber-50" data-avaria="${t.id}" title="Registar avaria" ${podeEditar && t.estado !== 'abatido' ? '' : 'disabled'}>
           <i data-lucide="wrench" class="w-4 h-4"></i></button>
-        <button class="accao text-slate-600 hover:bg-slate-100" data-abate="${t.id}" title="Abater" ${podeAdmin && t.estado !== 'abatido' ? '' : 'disabled'}>
+        <button class="accao text-slate-600 hover:bg-slate-100" data-propor="${t.id}" title="Propor para abate" ${podeEditar && !t.abate_estado ? '' : 'disabled'}>
           <i data-lucide="archive" class="w-4 h-4"></i></button>
       </td>
     </tr>`;
@@ -433,11 +436,7 @@ async function abrirDetalhe(id) {
         os zeros à esquerda. Confirma no cartão antes de o usar — dez tentativas erradas pedem o PUK.</p>` : ''}
     </section>
 
-    ${t.abate ? `<section class="bg-slate-100 border border-slate-200 rounded-lg p-4">
-      <h3 class="text-sm font-bold text-slate-700 mb-1">Abatido${t.abate.data_abate ? ' em ' + dataPt(t.abate.data_abate) : ''}</h3>
-      <p class="text-sm text-slate-600">${esc(t.abate.motivo || 'sem motivo registado')}</p>
-      ${estado.permissoes.canAdmin ? '<button id="btnAnularAbate" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Anular abate</button>' : ''}
-    </section>` : ''}
+    ${seccaoAbate(t.abate, t.id)}
 
     <section>
       <h3 class="text-sm font-bold text-slate-700 mb-1">Entregas</h3>
@@ -602,24 +601,6 @@ function modalReparar(avariaId) {
   });
 }
 
-function modalAbate(id) {
-  const t = aparelho(id);
-  abrirModal({
-    titulo: `Abater o tablet ${nomeDoTablet(t)}`,
-    ajuda: 'O tablet sai do parque activo mas não é apagado: o histórico fica.',
-    campos: [
-      { nome: 'data_abate', rotulo: 'Data do abate', tipo: 'date', valor: hojeISO() },
-      { nome: 'motivo', rotulo: 'Motivo', tipo: 'text', obrigatorio: true, dica: 'Irreparável, extraviado, fim de vida…' },
-      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
-    ],
-    textoGravar: 'Abater',
-    gravar: async d => {
-      await enviar(`/${id}/abate`, d);
-      toast('Tablet abatido.');
-      await refrescar(estado.aberto ? id : null);
-    },
-  });
-}
 
 function modalEquipamento(t) {
   const novo = !t;
@@ -707,7 +688,7 @@ function procuraAdiada(fn) {
 }
 
 document.addEventListener('click', async ev => {
-  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-abate],[data-reparar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnAnularAbate,#btnNovo,#btnExportar');
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-reparar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnNovo,#btnExportar');
   if (!alvo) return;
   const d = alvo.dataset;
   try {
@@ -716,17 +697,10 @@ document.addEventListener('click', async ev => {
     if (alvo.id === 'btnExportar') return exportarCSV();
     if (alvo.id === 'btnNovo') return modalEquipamento(null);
     if (alvo.id === 'btnEditar') return modalEquipamento(estado.aberto);
-    if (alvo.id === 'btnAnularAbate') {
-      if (!confirm('Anular o abate e devolver o tablet ao parque?')) return;
-      await pedir(`/${estado.aberto.id}/abate`, { method: 'DELETE' });
-      toast('Abate anulado.');
-      return refrescar(estado.aberto.id);
-    }
     if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
     if (d.entregar) return modalEntregar(Number(d.entregar));
     if (d.devolver) return modalDevolver(Number(d.devolver));
     if (d.avaria) return modalAvaria(Number(d.avaria));
-    if (d.abate) return modalAbate(Number(d.abate));
     if (d.reparar) return modalReparar(Number(d.reparar));
     if (d.estado !== undefined && alvo.classList.contains('cartao')) {
       estado.filtros.estado = d.estado;
@@ -775,6 +749,287 @@ document.addEventListener('keydown', ev => {
   if (!document.getElementById('modal').classList.contains('hidden')) return fecharModal();
   if (!document.getElementById('painel').classList.contains('hidden')) return fecharPainel();
 });
+
+// ─── Abate e autos de abate ────────────────────────────────
+
+/**
+ * Propor para abate e os autos de abate.
+ *
+ * Este bloco é o mesmo nas cinco páginas, copiado de propósito: as páginas não
+ * partilham código (ver o CLAUDE.md). O que é comum vive no servidor, no
+ * `server/routes/iga/autos.js`, e o fluxo está na migração 006: propõe-se, o
+ * auto junta os propostos desta categoria, imprime-se no modelo da DMSI, e só
+ * ao homologar é que o equipamento fica abatido.
+ *
+ * Os cliques deste bloco são apanhados na fase de captura e não seguem: os
+ * botões vivem dentro de linhas que abrem a ficha, e o clique não pode chegar
+ * lá abaixo.
+ */
+
+const DESTINO_HABITUAL = 'RESIR - Resíduos Industriais e Reciclagem, Lda';
+
+/** A etiqueta pequena que vai ao lado do estado, na tabela. */
+function etiquetaAbate(estadoAbate) {
+  if (estadoAbate === 'proposto') {
+    return ' <span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 whitespace-nowrap" title="Proposto para abate, à espera de auto homologado">p/ abate</span>';
+  }
+  if (estadoAbate === 'abatido') {
+    return ' <span class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 whitespace-nowrap">abatido</span>';
+  }
+  return '';
+}
+
+function painelAberto() {
+  return !document.getElementById('painel').classList.contains('hidden');
+}
+
+/** A secção do detalhe: proposto (com o auto, se já tiver) ou abatido. */
+function seccaoAbate(ab, idEquipamento) {
+  if (!ab) return '';
+  const auto = ab.auto
+    ? `Auto de abate n.º ${esc(ab.auto.numero_texto)}${ab.auto.estado === 'rascunho' ? ' (por homologar)' : ''}`
+    : '';
+  if (ab.estado === 'proposto') {
+    return `<section class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+      <h3 class="text-sm font-bold text-amber-900 mb-1">Proposto para abate</h3>
+      <p class="text-sm text-amber-900">${esc(ab.motivo || 'sem motivo')}</p>
+      <p class="text-xs text-amber-800 mt-1">Apto para doação: ${esc(ab.apto_texto || '—')} · ${auto || 'ainda sem auto'}</p>
+      ${estado.permissoes.canEdit
+        ? `<button data-retirar-abate="${idEquipamento}" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Retirar a proposta</button>` : ''}
+    </section>`;
+  }
+  // Um abate de antes dos autos ainda se anula, pela administração; um feito por
+  // auto homologado não — o papel está assinado.
+  const podeAnular = !ab.auto && estado.permissoes.canAdmin;
+  return `<section class="bg-slate-100 border border-slate-200 rounded-lg p-4">
+    <h3 class="text-sm font-bold text-slate-700 mb-1">Abatido${ab.data_abate ? ' em ' + dataPt(ab.data_abate) : ''}</h3>
+    <p class="text-sm text-slate-600">${auto || esc(ab.motivo || 'sem motivo registado')}</p>
+    ${auto && ab.motivo && !/^Auto de abate/.test(ab.motivo) ? `<p class="text-xs text-slate-500 mt-1">${esc(ab.motivo)}</p>` : ''}
+    ${podeAnular ? `<button data-retirar-abate="${idEquipamento}" class="mt-2 text-xs font-semibold text-red-600 hover:underline">Anular abate</button>` : ''}
+  </section>`;
+}
+
+function modalProporAbate(id) {
+  abrirModal({
+    titulo: 'Propor para abate',
+    ajuda: 'Fica marcado até entrar num auto de abate e o auto ser homologado. Até lá não conta como abatido, e não se entrega.',
+    campos: [
+      { nome: 'motivo', rotulo: 'Motivo', tipo: 'text', obrigatorio: true, dica: 'Inoperacional, obsoleto, extraviado…' },
+      { nome: 'apto_doacao', rotulo: 'Apto para doação', tipo: 'select', valor: 'nao', opcoes: [
+        { valor: 'nao', texto: 'Não' },
+        { valor: 'sim', texto: 'Sim' },
+      ] },
+      { nome: 'caracteristicas', rotulo: 'Características técnicas', tipo: 'text',
+        dica: 'Só se for apto para doação', nota: 'Vai para a coluna "Apto para doação" do auto.' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea' },
+    ],
+    textoGravar: 'Propor',
+    gravar: async d => {
+      await enviar(`/${id}/abate`, d);
+      toast('Proposto para abate.');
+      await refrescar(painelAberto() ? id : null);
+    },
+  });
+}
+
+async function retirarAbate(id) {
+  if (!confirm('Retirar a proposta (ou anular o abate) e devolver o equipamento ao parque?')) return;
+  await pedir(`/${id}/abate`, { method: 'DELETE' });
+  toast('Feito.');
+  await refrescar(id);
+}
+
+// ─── Painel dos autos ──────────────────────────────────────
+
+const ESTADOS_AUTO = {
+  rascunho:   { texto: 'Por homologar', classe: 'bg-amber-100 text-amber-800' },
+  homologado: { texto: 'Homologado',    classe: 'bg-slate-200 text-slate-700' },
+};
+
+function etiquetaAuto(e) {
+  const x = ESTADOS_AUTO[e] || { texto: e, classe: 'bg-slate-100 text-slate-600' };
+  return `<span class="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${x.classe}">${esc(x.texto)}</span>`;
+}
+
+const botaoSecundario = 'text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700';
+const botaoPrimario = 'text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40';
+
+async function abrirAutos() {
+  const r = await pedir('/autos');
+  estado.autos = r.autos;
+  estado.proximoAuto = r.proximo;
+  const pode = estado.permissoes.canEdit;
+  document.getElementById('painelTitulo').textContent = 'Autos de abate';
+  document.getElementById('painelSubtitulo').textContent = r.propostos_soltos
+    ? `${r.propostos_soltos} proposto${r.propostos_soltos === 1 ? '' : 's'} à espera de auto`
+    : 'Nenhum proposto à espera de auto';
+  document.getElementById('painelCorpo').innerHTML = `
+    <section class="space-y-2">
+      ${pode ? `<button data-auto-novo class="${botaoPrimario}" ${r.propostos_soltos ? '' : 'disabled'}>
+        ${!r.propostos_soltos ? 'Novo auto — não há propostos' : r.propostos_soltos === 1 ? 'Novo auto com o proposto' : `Novo auto com os ${r.propostos_soltos} propostos`}</button>` : ''}
+      <p class="text-xs text-slate-500">Cada auto leva só equipamento desta página. O n.º é o do papel (o IGA sugere
+        o seguinte ao último do ano), e a 1.ª folha sai no modelo da DMSI.</p>
+    </section>
+    <section>
+      <ul class="divide-y divide-slate-100">${r.autos.length ? r.autos.map(a => `
+        <li><button data-auto="${a.id}" class="w-full text-left flex items-center gap-3 py-2.5 hover:bg-slate-50 rounded">
+          <span class="font-bold text-slate-900 w-20">${esc(a.numero_texto)}</span>
+          <span class="text-sm text-slate-600 flex-1">${dataPt(a.data)} · ${a.itens} equipamento${a.itens === 1 ? '' : 's'}</span>
+          ${etiquetaAuto(a.estado)}
+        </button></li>`).join('') : '<li class="text-sm text-slate-600 py-2">Ainda não há autos de abate.</li>'}
+      </ul>
+    </section>`;
+  document.getElementById('painel').classList.remove('hidden');
+}
+
+async function abrirAuto(id) {
+  const a = await pedir('/autos/' + id);
+  estado.autoAberto = a;
+  const rascunho = a.estado === 'rascunho';
+  const podeEditar = rascunho && estado.permissoes.canEdit;
+  const comissao = [a.comissao1, a.comissao2, a.comissao3].filter(Boolean).map(esc).join('<br>');
+
+  document.getElementById('painelTitulo').textContent = `Auto de abate n.º ${a.numero_texto}`;
+  document.getElementById('painelSubtitulo').textContent =
+    `${dataPt(a.data)} · ${a.itens.length} equipamento${a.itens.length === 1 ? '' : 's'}`;
+  document.getElementById('painelCorpo').innerHTML = `
+    <section>
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        ${etiquetaAuto(a.estado)}
+        ${a.data_homologacao ? `<span class="text-xs text-slate-500">em ${dataPt(a.data_homologacao)}</span>` : ''}
+        <button data-autos class="ml-auto text-xs font-semibold text-blue-600 hover:underline">← Todos os autos</button>
+      </div>
+      <dl class="grid grid-cols-2 gap-3">
+        ${linhaCampo('Data', dataPt(a.data))}
+        ${linhaCampo('Comissão', comissao)}
+        ${linhaCampo('Entidade responsável', esc(a.destino))}
+        ${linhaCampo('Valor do auto', esc(a.valor))}
+      </dl>
+      ${a.obs ? `<p class="mt-3 text-sm bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3">${esc(a.obs)}</p>` : ''}
+      <div class="flex flex-wrap gap-2 mt-4">
+        <a href="${API}/autos/${a.id}/pdf" target="_blank" rel="noopener" class="${botaoPrimario}">Imprimir o auto (PDF)</a>
+        ${podeEditar ? `<button data-auto-editar class="${botaoSecundario}">Editar</button>
+                        <button data-auto-acrescentar class="${botaoSecundario}">Juntar propostos novos</button>` : ''}
+        ${rascunho && estado.permissoes.canAdmin ? `<button data-auto-homologar class="${botaoSecundario} text-emerald-700 border-emerald-300">Homologar</button>` : ''}
+        ${podeEditar ? `<button data-auto-apagar class="${botaoSecundario} text-red-600 border-red-200">Apagar</button>` : ''}
+      </div>
+      ${rascunho ? '<p class="text-xs text-slate-500 mt-2">Homologar é o último passo, quando o auto vier assinado: o equipamento fica abatido na data do auto.</p>' : ''}
+    </section>
+    <section>
+      <h3 class="text-sm font-bold text-slate-700 mb-1">Equipamentos</h3>
+      <ul class="divide-y divide-slate-100">${a.itens.map(i => `
+        <li class="flex gap-3 py-2 text-sm">
+          <div class="flex-1">
+            <div class="font-semibold text-slate-800">${esc(i.identificacao || '—')}
+              <span class="font-normal text-slate-500">· ${esc(i.descricao || '')} · ${esc(i.marca || '')}</span></div>
+            <div class="text-xs text-slate-500">Série ${esc(i.serie || '—')} · ${esc(i.motivo || '')}
+              ${i.apto_texto ? ` · apto para doação: ${esc(i.apto_texto)}` : ''}</div>
+          </div>
+          ${podeEditar ? `<button data-auto-tirar="${i.id}" class="text-xs font-semibold text-red-600 hover:underline self-center">Tirar</button>` : ''}
+        </li>`).join('') || '<li class="text-sm text-slate-600 py-2">Sem equipamentos.</li>'}
+      </ul>
+    </section>`;
+  document.getElementById('painel').classList.remove('hidden');
+}
+
+/**
+ * A janela do auto: o que o modelo da DMSI pede, por esta ordem. Num auto novo a
+ * comissão e a entidade vêm do último (costumam ser as mesmas), e o n.º vem
+ * sugerido — mas é o do papel que conta, e corrige-se aqui.
+ */
+function camposAuto(a) {
+  return [
+    { nome: 'numero', rotulo: 'N.º do auto de abate', tipo: 'number', valor: a.numero, obrigatorio: true,
+      nota: a.sugerido ? `Sugerido: o seguinte ao último lançado em ${a.ano}. Escreva o do papel, se for outro.`
+                       : 'O ano é o da data do auto.' },
+    { nome: 'data', rotulo: 'Data da reunião da comissão', tipo: 'date', valor: a.data ? String(a.data).slice(0, 10) : hojeISO() },
+    { nome: 'comissao1', rotulo: 'Comissão — 1.º elemento', tipo: 'text', valor: a.comissao1, dica: 'Chefe Hélio Marques', obrigatorio: true },
+    { nome: 'comissao2', rotulo: 'Comissão — 2.º elemento', tipo: 'text', valor: a.comissao2 },
+    { nome: 'comissao3', rotulo: 'Comissão — 3.º elemento', tipo: 'text', valor: a.comissao3 },
+    { nome: 'valor', rotulo: 'Valor do auto', tipo: 'text', valor: a.valor,
+      nota: 'Vazio, e com mais de 10 equipamentos, fica "Em anexo a lista…".' },
+    { nome: 'destino', rotulo: 'Entidade responsável pelo equipamento a abater', tipo: 'text',
+      valor: a.destino || DESTINO_HABITUAL, obrigatorio: true,
+      nota: 'É o "abatendo-os à responsabilidade de" do auto.' },
+    { nome: 'obs', rotulo: 'Observações (não vão para o papel)', tipo: 'textarea', valor: a.obs },
+  ];
+}
+
+function modalNovoAuto() {
+  const ultimo = (estado.autos || [])[0] || {};
+  abrirModal({
+    titulo: 'Novo auto de abate',
+    ajuda: 'Junta todos os propostos desta página que ainda não estão num auto.',
+    campos: camposAuto({ numero: (estado.proximoAuto || {}).numero, ano: (estado.proximoAuto || {}).ano, sugerido: true,
+                         comissao1: ultimo.comissao1, comissao2: ultimo.comissao2,
+                         comissao3: ultimo.comissao3, destino: ultimo.destino }),
+    textoGravar: 'Criar o auto',
+    gravar: async d => {
+      const r = await enviar('/autos', d);
+      toast(`Auto de abate n.º ${r.numero_texto} criado.`);
+      await refrescar(null);
+      await abrirAuto(r.id);
+    },
+  });
+}
+
+function modalEditarAuto() {
+  const a = estado.autoAberto;
+  abrirModal({
+    titulo: `Editar o Auto n.º ${a.numero_texto}`,
+    campos: camposAuto(a),
+    gravar: async d => {
+      await enviar(`/autos/${a.id}`, d, 'PUT');
+      toast('Auto gravado.');
+      await abrirAuto(a.id);
+    },
+  });
+}
+
+async function accaoAuto(alvo) {
+  const a = estado.autoAberto;
+  if (alvo.matches('[data-autos]')) return abrirAutos();
+  if (alvo.matches('[data-auto-novo]')) return modalNovoAuto();
+  if (alvo.matches('[data-auto]')) return abrirAuto(Number(alvo.dataset.auto));
+  if (alvo.matches('[data-auto-editar]')) return modalEditarAuto();
+  if (alvo.matches('[data-auto-acrescentar]')) {
+    const r = await enviar(`/autos/${a.id}/acrescentar`, {});
+    toast(r.acrescentados ? `Juntados ${r.acrescentados}.` : 'Não havia propostos novos.', r.acrescentados ? undefined : 'aviso');
+    return abrirAuto(a.id);
+  }
+  if (alvo.matches('[data-auto-tirar]')) {
+    await pedir(`/autos/${a.id}/itens/${alvo.dataset.autoTirar}`, { method: 'DELETE' });
+    toast('Saiu do auto; continua proposto.');
+    return abrirAuto(a.id);
+  }
+  if (alvo.matches('[data-auto-homologar]')) {
+    if (!confirm(`Homologar o Auto n.º ${a.numero_texto}? Os ${a.itens.length} equipamentos ficam abatidos a ${dataPt(a.data)}, e isto não se desfaz.`)) return;
+    const r = await enviar(`/autos/${a.id}/homologar`, {});
+    toast(`Auto homologado: ${r.abatidos} abatidos.`);
+    await refrescar(null);
+    return abrirAuto(a.id);
+  }
+  if (alvo.matches('[data-auto-apagar]')) {
+    if (!confirm(`Apagar o Auto n.º ${a.numero_texto}? Os equipamentos continuam propostos, e o n.º fica livre.`)) return;
+    await pedir(`/autos/${a.id}`, { method: 'DELETE' });
+    toast('Auto apagado.');
+    return abrirAutos();
+  }
+}
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('[data-propor],[data-retirar-abate],#btnAutos,[data-autos],[data-auto-novo],[data-auto],[data-auto-editar],[data-auto-acrescentar],[data-auto-tirar],[data-auto-homologar],[data-auto-apagar]');
+  if (!alvo) return;
+  ev.stopPropagation();
+  try {
+    if (alvo.matches('[data-propor]')) return modalProporAbate(Number(alvo.dataset.propor));
+    if (alvo.matches('[data-retirar-abate]')) return await retirarAbate(Number(alvo.dataset.retirarAbate));
+    if (alvo.id === 'btnAutos') return await abrirAutos();
+    await accaoAuto(alvo);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+}, true);
 
 // ─── Arranque ──────────────────────────────────────────────
 

@@ -171,6 +171,8 @@ const TIPOS = [
     contagens: [
       { rotulo: 'Instaladas', campo: 'com_local', cor: 'text-blue-700' },
       { rotulo: 'Sem local', campo: 'sem_local', alerta: true },
+      // Desde a 006 também se abatem; saem das outras duas parcelas.
+      { rotulo: 'Abatidas', campo: 'abatidas', cor: 'text-slate-600' },
     ],
   },
   {
@@ -180,14 +182,15 @@ const TIPOS = [
     icone: 'camera',
     pagina: '/maquinas.html',
     api: '/maquinas',
-    // Entregam-se a pessoas, mas não têm avarias nem abates (ver a migração
-    // 004): das quatro contagens do parque só duas fazem sentido, e são essas
-    // duas a partição. Os levantamentos que a folha não datou vêem-se na página
+    // Entregam-se a pessoas e, desde a 006, abatem-se; avarias não têm (ver a
+    // 004): das quatro contagens do parque fazem sentido três, e são essas
+    // a partição. Os levantamentos que a folha não datou vêem-se na página
     // das máquinas, no KPI "Sem data" e a âmbar na coluna Atribuído — aqui não,
     // que são um subconjunto das entregues e não uma terceira parcela.
     contagens: [
       { rotulo: 'Entregues', campo: 'entregues', cor: 'text-blue-700' },
       { rotulo: 'Disponíveis', campo: 'disponiveis', cor: 'text-emerald-700', destaque: true },
+      { rotulo: 'Abatidas', campo: 'abatidas', cor: 'text-slate-600' },
     ],
   },
   {

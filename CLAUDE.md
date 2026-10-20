@@ -129,11 +129,11 @@ O terceiro tipo é o primeiro que **não se entrega a ninguém**: uma impressora
 serviço. A migração `003` tem o raciocínio por extenso; o que aqui interessa é não desfazer as
 decisões por parecerem esquecimentos.
 
-- **Não há `impressoras_atribuicoes`, `_avarias` nem `_abates`, e não há coluna `estado`.** Não
-  faltam: sem avarias nem abates o estado era 'disponivel' em todas as linhas para sempre. Por
-  isso também **não existe `recalcularEstado()` no `impressoras.js`** — não procures o que ele
-  não tem. Se as avarias vierem a ser registadas, é migração nova (`004_…`), com a coluna e o
-  recálculo a acompanhar.
+- **Não há `impressoras_atribuicoes` nem `_avarias`, e não há coluna `estado`.** Não faltam: sem
+  avarias o estado era 'disponivel' em todas as linhas para sempre. Por isso também **não
+  existe `recalcularEstado()` no `impressoras.js`** — não procures o que ele não tem. Desde a
+  `006` há **`impressoras_abates`** (vão a auto de abate), e "abatida" lê-se de lá, sem coluna.
+  Se as avarias vierem a ser registadas, é migração nova, com a coluna e o recálculo.
 - **A localização é uma coluna, não um histórico.** Guarda-se onde a impressora ESTÁ, não por
   onde andou — o ficheiro de origem também só tem "Localização Atual", uma célula por máquina.
   A ficha di-lo em voz alta, para ninguém procurar um histórico que não existe. Se for preciso
@@ -163,13 +163,15 @@ assumir o que este ficheiro tem.
 
 - **Tem `maquinas_atribuicoes`**, no molde do `telemoveis_atribuicoes`: uma máquina fotográfica
   é levantada por alguém, ao contrário de uma impressora.
-- **Não tem coluna `estado`, e não é esquecimento.** Sem avarias nem abates sobrava o par
+- **Não tem coluna `estado`, e não é esquecimento.** Sem avarias sobrava o par
   disponível/atribuído, que se lê da existência de uma entrega aberta — a `ENTREGA_ABERTA` do
   `maquinas.js`, um `OUTER APPLY` que a listagem e o detalhe já fazem. Guardá-lo numa coluna
   era arranjar uma segunda fonte de verdade para o que já se sabe. **Por isso também não há
   `recalcularEstado()` aqui** — não procures o que não existe.
   Isto **não contradiz** a regra dos rádios ("o estado é uma coluna, não uma consulta"): lá são
   quatro valores com precedência, vindos de três tabelas. Aqui é uma pergunta a uma tabela só.
+  Desde a `006` há também **`maquinas_abates`**: "abatida" é ter lá uma linha 'abatido', e a
+  máquina abatida sai das disponíveis.
 - ⚠️ **A data de entrega é opcional neste tipo**, ao contrário dos outros. Três dos quatro
   levantamentos da carga não têm data e não se inventa nenhuma — nem sequer há um dia de
   apuramento comum como o `DATA_ATRIBUICAO_PADRAO` dos rádios. O ecrã mostra-as a âmbar e o KPI
@@ -205,6 +207,35 @@ O quinto tipo (`005`) é o molde dos telemóveis inteiro — entregas a pessoas,
 - **"UTILIZADOR" nas folhas não é uma pessoa**: é a `finalidade` ("Na Minha Rua Lx"). Quem tem o
   tablet é a entrega. Só 25 dos 34 têm inventário; nos outros a tabela mostra o número do cartão.
 
+## Autos de abate: propor, auto, homologar
+
+Desde a `006`/`007` abater não é um clique: **propõe-se** (fica `estado = 'proposto'` na
+`<tipo>_abates`), junta-se num **auto de abate** e só ao **homologar** o auto é que fica
+`'abatido'`. A migração `006` tem o raciocínio inteiro.
+
+- **Cada auto é de uma categoria só**, e não por regra: o cabeçalho (`autos_abate`) tem o `tipo`,
+  e as linhas vivem na `<tipo>_abates`. Não acrescentes um ecrã que junte categorias.
+- **O n.º do auto é o do papel**: escreve-se na janela do auto, com o IGA a **sugerir** o
+  seguinte ao maior do ano (`MAX(numero)+1`). A numeração da PM é **uma só para todas as
+  categorias**: o `UX_autos_abate_numero` (ano, número) e o `numeroOcupado()` recusam o mesmo
+  número noutra categoria. Num rascunho o número corrige-se; o ano é sempre o da data.
+- **O `recalcularEstado()` só conta abates `'abatido'`.** Um equipamento proposto mantém o
+  estado (normalmente 'avariado') e **não se entrega** — o `/atribuir` recusa-o.
+- **As rotas são as mesmas nos cinco tipos**, em `server/routes/iga/autos.js` (`montarAutos()`),
+  chamado em cada router **antes do `/:id`**. As páginas continuam independentes: o bloco do
+  ecrã está copiado nas cinco, de propósito.
+- ⚠️ **O cabeçalho está na base do módulo e as linhas na base do tipo.** Nos telemóveis são
+  bases diferentes em desenvolvimento: o `autos.js` lê uma e depois a outra, sem JOIN, e o
+  `telemoveis_abates.auto_id` não tem FK (ver a `007`).
+- ⚠️ **O PDF desenha por cima do modelo da DMSI** (`server/modelos/auto_abate_CML.pdf`), nas
+  coordenadas dos campos — o modelo é XFA e não se preenche por programa. As coordenadas estão
+  no `auto_pdf.js`; **se a DMSI mudar o modelo, mudam com ele**. A tabela tem 10 linhas: com
+  mais, vão 9 e a 10.ª remete para o anexo, que traz a lista toda.
+- **Um abate homologado não se anula** (o papel está assinado). Os abates de antes dos autos
+  — sem `auto_id`, como os 39 dos telemóveis — anulam-se pela administração, como antes.
+- **O Auto 02/2023 dos rádios foi lançado à mão** (148 rádios, do `abate rádios.pdf`), já
+  homologado. Não o "corrijas" para rascunho.
+
 ## Credenciais dos telemóveis
 
 - ⚠️ **Nenhuma consulta de listagem ou de detalhe pode devolver `pin`, `puk` ou
@@ -223,8 +254,9 @@ O quinto tipo (`005`) é o molde dos telemóveis inteiro — entregas a pessoas,
 ## Autorização
 
 - O gate de VER está aplicado **ao router inteiro** (`router.use(exigirAcesso)`, logo a seguir a
-  `/permissoes`). **Rotas novas vão dentro dele**; as que mudam dados levam `exigirEdicao`, e o
-  abate e a remoção `exigirAdmin`.
+  `/permissoes`). **Rotas novas vão dentro dele**; as que mudam dados levam `exigirEdicao`, e a
+  remoção e a **homologação de um auto de abate** `exigirAdmin`. Propor para abate e montar o
+  auto são de quem tem edição.
 - **Não acrescentes autenticação.** A identidade vem do Windows (SSPI) na intranet e é injectada
   pelo harness em desenvolvimento.
 - **O `npm run harness-rede` é o harness a fazer de SSPI**, para colegas testarem pela rede — não
