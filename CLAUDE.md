@@ -62,11 +62,11 @@ base de dados é a única fonte. As folhas de origem serviram para a carga inici
 - **Um tipo novo não traz importador.** Se um dia vier um ficheiro para carregar, é uma carga
   única e conversa a ter primeiro, não um script de rotina.
 
-## Duas bases de dados, quatro tipos
+## Duas bases de dados, cinco tipos
 
 - **Os rádios estão na `RadiosDev` e os telemóveis na `TelemoveisDev`.** Duas pools: o `db.js`
   (cópia da intranet) e o `db-telemoveis.js`, que só existe por causa disto.
-- **As impressoras e as máquinas fotográficas ficam na base do `db.js` — a mesma dos rádios — e
+- **As impressoras, as máquinas fotográficas e os tablets ficam na base do `db.js` — a mesma dos rádios — e
   não têm pool própria.** Base própria é a excepção que os telemóveis são, não a regra: um
   `db-impressoras.js` era uma terceira ligação para chegar ao mesmo sítio. Um tipo novo só leva
   pool quando levar base.
@@ -185,6 +185,26 @@ assumir o que este ficheiro tem.
   distinguem algo que a folha não explica — parti-los era inventar o significado de uma letra)
   e a coluna "Levantou" traz o **username**, não o nome.
 
+## Os tablets: o molde completo, e a ficha mostra tudo
+
+O quinto tipo (`005`) é o molde dos telemóveis inteiro — entregas a pessoas, avarias, abates e
+`estado` com o seu `recalcularEstado()` —, mas na base do `db.js`. O que muda:
+
+- ⚠️ **O PIN e o PUK vêm no `GET /tablets/:id`, à vista, sem rota de credenciais.** Decisão de
+  2026-10-20: quem gere os tablets quer tudo ao abrir a ficha. **Continuam fora do `COLUNAS`**
+  — a listagem e o CSV não os levam — e **gravá-los é só de `canAdmin`**. Não "uniformizes" com
+  os telemóveis em nenhum dos sentidos.
+- **Foram a primeira carga depois de retirados os importadores**: entraram uma vez, por SQL
+  gerado fora do repositório, e não há `tablets_importacoes`. É o caminho para uma próxima
+  carga, se houver.
+- ⚠️ **O ICCID não tem índice único, de propósito**: dois pares de tablets da origem partilham-no
+  (39/44 e 40/67/TAB/2023), e a ficha avisa nas `obs`. Únicos são o inventário, o número, o IMEI
+  e a série, todos filtrados.
+- **A série guarda-se em maiúsculas** (`serie()` no `tablets.js`): as da Samsung são-no, e a
+  folha tinha algumas à mão em minúsculas — a mesma série das duas maneiras passava o índice.
+- **"UTILIZADOR" nas folhas não é uma pessoa**: é a `finalidade` ("Na Minha Rua Lx"). Quem tem o
+  tablet é a entrega. Só 25 dos 34 têm inventário; nos outros a tabela mostra o número do cartão.
+
 ## Credenciais dos telemóveis
 
 - ⚠️ **Nenhuma consulta de listagem ou de detalhe pode devolver `pin`, `puk` ou
@@ -221,7 +241,7 @@ assumir o que este ficheiro tem.
 ## Uma página por tipo de equipamento
 
 - **`public/radios.html`, `public/telemoveis.html`, `public/impressoras.html` e
-  `public/maquinas.html` são independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
+  `public/maquinas.html` e `public/tablets.html` são independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
   de uma página: cada tipo tem o seu ecrã, e o próximo equipamento será outra página. Foi
   decidido assim com o custo à vista — **não "arrumes" isto para um ficheiro comum** por
   parecer duplicação; é uma escolha, não um descuido. Se algum dia for para mudar, é conversa

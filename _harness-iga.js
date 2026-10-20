@@ -39,7 +39,7 @@ const WINDOWS = (process.env.IDENTIDADE || '').toLowerCase() === 'windows'
  * As páginas do módulo, todas atrás do gate de VER. A primeira é a porta de
  * entrada — é para lá que a raiz reencaminha, e é o link que se dá às pessoas.
  */
-const PAGINAS = ['iga', 'radios', 'telemoveis', 'impressoras', 'maquinas'];
+const PAGINAS = ['iga', 'radios', 'telemoveis', 'impressoras', 'maquinas', 'tablets'];
 
 /**
  * Onde começam os mecanográficos inventados para os colegas.

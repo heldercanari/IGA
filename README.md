@@ -8,7 +8,7 @@ API `/api/iga/<tipo>`, assets em `public/iga/`, grupos `IGA`, `IGA-Consulta` e `
 Os nomes por tipo de equipamento — `radios`, `telemoveis`, as tabelas e as bases — não levam
 o prefixo: pertencem ao tipo, não à aplicação.
 
-Quatro tipos de activo, uma página para cada:
+Cinco tipos de activo, uma página para cada:
 
 - **Rádios** — parque TETRA. Carregado de `master radios.xlsx`, `atribuidos.xlsx` e
   `avarias.csv`, que substituíram o `Radios apanhado.xlsx` original (7 folhas).
@@ -21,6 +21,10 @@ Quatro tipos de activo, uma página para cada:
   `Kodak PIXPRO` do `Kodak.xlsx` (`C:\Apps\`, o livro geral do NSIC com 27 folhas). **Tem
   entregas** — uma máquina é levantada por alguém —, mas não tem avarias, abates nem coluna
   `estado`: está entregue quem tiver um levantamento por devolver.
+- **Tablets** — 34 Samsung Galaxy Tab, das três folhas "Tablet…" do `IpsImpressoras e
+  consumiveis.xlsx` (OneDrive do NSIC). Molde completo dos telemóveis — entregas a pessoas,
+  avarias, abates e `estado` — e a primeira carga depois de retirados os importadores: entrou
+  uma vez, directamente na base, e daqui para a frente é pelo ecrã.
 
 **Os ficheiros serviram só para a carga inicial.** Desde 2026-10-13 não há importações: o
 inventário mantém-se no ecrã, à medida da necessidade, e a base de dados é a única fonte. Os
@@ -33,7 +37,7 @@ importadores saíram do repositório — ver *[Os dados](#os-dados)*.
 > para a cópia ser ficheiro-a-ficheiro.
 
 **Uma página por tipo de equipamento**, independente das outras: `public/radios.html`,
-`public/telemoveis.html`, `public/impressoras.html` e `public/maquinas.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
+`public/telemoveis.html`, `public/impressoras.html`, `public/maquinas.html` e `public/tablets.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
 abertos: cada página é dona do seu ecrã, e em troca uma correcção de comportamento tem de ser
 repetida em todas. A secção *[Acrescentar um tipo de equipamento](#acrescentar-um-tipo-de-equipamento)*
 diz o que é preciso tocar.
@@ -83,6 +87,10 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\003_impressoras.sq
 sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\004_maquinas.sql
 ```
 
+```bash
+sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\005_tablets.sql
+```
+
 - `000_seed_local.sql` — andaime de desenvolvimento: cria `colaboradores`, `grupos`,
   `grupo_membros` e `admin_users` com utilizadores de teste. **Não é uma migração da
   intranet**; lá estas tabelas já existem.
@@ -91,6 +99,8 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\004_maquinas.sql
   impressoras não têm base própria nem pool própria. Duas tabelas só, `impressoras` e
   `impressoras_importacoes` (histórico da carga inicial) — sem `_atribuicoes`, `_avarias` nem
   `_abates`, e sem coluna `estado`; o ficheiro explica porquê.
+- `005_tablets.sql` — os tablets, também nesta base, no molde completo dos telemóveis
+  (`_atribuicoes`, `_avarias`, `_abates` e `estado`) e sem tabela de importações.
 - `004_maquinas.sql` — as máquinas fotográficas, também nesta base. Leva `maquinas_atribuicoes`
   (ao contrário das impressoras: uma máquina é levantada por alguém), mas continua sem
   `_avarias`, `_abates` e sem coluna `estado`.
@@ -117,7 +127,7 @@ sqlcmd -S localhost -E -d TelemoveisDev -I -f 65001 -i migrations\002_telemoveis
 
 ## Os dados
 
-**Não há importações.** Os quatro tipos foram carregados uma vez a partir das folhas de origem
+**Não há importações.** Os cinco tipos foram carregados uma vez a partir das folhas de origem
 e, desde 2026-10-13, mantêm-se só pelo ecrã — entregas, avarias, abates, mudanças de serviço e
 correcções de ficha. A base de dados é a única fonte; não há ficheiro nenhum a sincronizar.
 
@@ -140,6 +150,7 @@ npm run harness
 - Telemóveis → <http://localhost:3943/telemoveis.html>
 - Impressoras → <http://localhost:3943/impressoras.html>
 - Máquinas fotográficas → <http://localhost:3943/maquinas.html>
+- Tablets → <http://localhost:3943/tablets.html>
 
 A entrada é a página a dar às pessoas e a pôr no menu da intranet: mostra um cartão por
 equipamento com as contagens, e abre a página respectiva. O cabeçalho das páginas de
@@ -258,14 +269,26 @@ o que se escreve da mesma maneira; arruma-se a unidade, nunca o número.
 > (`claudino.antunes`), com a matrícula ao lado. O ecrã tem o autocompletar do
 > `/radios/utilizadores` para quem quiser escrever o nome a sério por cima.
 
+**Tablets** — 34 aparelhos de três serviços: Div Pol (25), Divisão de Trânsito (8) e Equipa de
+Segurança Privada (1). A tabela mostra **o equipamento e quem o tem**: o número de inventário
+(`29/TAB/2023`), ou, nos 9 que a folha não inventariou, o número do cartão. **A ficha mostra
+tudo**, o PIN e o PUK incluídos e sem botão "mostrar" — ao contrário dos telemóveis, decisão de
+2026-10-20. A listagem e o CSV não os levam, e gravá-los é só da administração.
+
+> ⚠️ Da folha de origem: **dois pares de tablets partilham o ICCID** (39 e 44/TAB/2023, 40 e
+> 67/TAB/2023) — a ficha avisa nas observações, e só se resolve olhando para os cartões; a
+> coluna "UTILIZADOR" das folhas **não era uma pessoa** mas a finalidade ("Na Minha Rua Lx");
+> e as entregas à Divisão de Trânsito (05/02/2026) ficaram nas observações, porque foram a um
+> serviço e não a alguém.
+
 ## API
 
 Tudo debaixo de `/api/iga`. O gate de VER está aplicado ao router inteiro; as mutações
 levam `exigirEdicao`, e o abate e a remoção `exigirAdmin`.
 
 Cada tipo de equipamento tem o seu router debaixo do seu nome — `/api/iga/radios/…`,
-`/api/iga/telemoveis/…`, `/api/iga/impressoras/…` e `/api/iga/maquinas/…` —, e o `/permissoes`
-é do módulo, comum aos quatro.
+`/api/iga/telemoveis/…`, `/api/iga/impressoras/…`, `/api/iga/maquinas/…` e `/api/iga/tablets/…` —,
+e o `/permissoes` é do módulo, comum aos cinco.
 
 | Método | Rota | Quem |
 |---|---|---|
@@ -273,13 +296,13 @@ Cada tipo de equipamento tem o seu router debaixo do seu nome — `/api/iga/radi
 | GET | `<tipo>/` · `<tipo>/:id` · `<tipo>/estatisticas` | ver |
 | POST · PUT | `<tipo>/` · `<tipo>/:id` | editar |
 | POST | `<tipo>/:id/atribuir` · `/devolver` | editar (menos impressoras) |
-| POST | `<tipo>/:id/avarias` | editar (rádios e telemóveis) |
-| POST | `<tipo>/avarias/:id/reparar` | editar (rádios e telemóveis) |
-| POST · DELETE | `<tipo>/:id/abate` | administração (rádios e telemóveis) |
+| POST | `<tipo>/:id/avarias` | editar (rádios, telemóveis e tablets) |
+| POST | `<tipo>/avarias/:id/reparar` | editar (rádios, telemóveis e tablets) |
+| POST · DELETE | `<tipo>/:id/abate` | administração (rádios, telemóveis e tablets) |
 | DELETE | `<tipo>/:id` | administração |
 | GET | `radios/sistema` · `radios/conferencia` · `radios/utilizadores` | ver (só rádios) |
 | GET | `telemoveis/:id/credenciais` | administração (só telemóveis) |
-| GET | `impressoras/locais` | ver (só impressoras) |
+| GET | `impressoras/locais` · `tablets/locais` | ver |
 
 ⚠️ **O `PUT` das impressoras e das máquinas grava só os campos que vierem no corpo**; o dos
 rádios e dos telemóveis grava a lista toda e apaga o que não vier. É deliberado: nas
@@ -314,7 +337,7 @@ fotográficas (`004`) são os precedentes, e escolheram diferente:
 
 | | `_atribuicoes` | `_avarias` / `_abates` | coluna `estado` |
 |---|---|---|---|
-| rádios, telemóveis | sim | sim | sim, com `recalcularEstado()` |
+| rádios, telemóveis, tablets | sim | sim | sim, com `recalcularEstado()` |
 | impressoras | **não** — não se entregam | não | **não** |
 | máquinas fotográficas | **sim** — levantam-se | não | **não** — lê-se da entrega aberta |
 
