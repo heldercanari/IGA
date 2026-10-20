@@ -13,8 +13,9 @@ se descobre a ler o código, e o que já correu mal antes.
 
 **IGA** é o nome curto da aplicação e é o que está no código: `server/routes/iga/`,
 `/api/iga/<tipo>`, `public/iga/`, grupos `IGA`, `IGA-Consulta` e `IGA-Admin`, `req.igaUser`,
-código de erro `IGA_SEM_ACESSO`. Nos ecrãs aparece o nome por extenso — "Inventário e Gestão
-de Ativos" — com a sigla ao lado; só o separador do browser leva `· IGA`, que é o que lá cabe.
+código de erro `IGA_SEM_ACESSO`. Nos ecrãs aparece só o nome por extenso — "Inventário e
+Gestão de Ativos", **sem a sigla ao lado** (tirada a 2026-10-20) —; só o separador do browser
+leva `· IGA`, que é o que lá cabe.
 
 **Os nomes por tipo de equipamento não levam o prefixo**: `radios`, `telemoveis`,
 `impressoras`, `maquinas`, as páginas, as tabelas (`radios_*`, `telemoveis_*`, `impressoras_*`,
