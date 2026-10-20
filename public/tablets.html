@@ -113,7 +113,7 @@
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
             <div class="flex-1 min-w-[240px]">
                 <label for="procura" class="block text-xs font-semibold text-slate-600 mb-1">Procurar</label>
-                <input id="procura" type="search" placeholder="Inventário, número, IMEI, série, serviço ou quem o tem…"
+                <input id="procura" type="search" placeholder="Inventário, número, IMEI, série, divisão ou quem o tem…"
                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div>
@@ -124,6 +124,12 @@
                     <option value="disponivel">Disponíveis</option>
                     <option value="avariado">Avariados</option>
                     <option value="abatido">Abatidos</option>
+                </select>
+            </div>
+            <div>
+                <label for="filtroDivisao" class="block text-xs font-semibold text-slate-600 mb-1">Divisão</label>
+                <select id="filtroDivisao" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todas</option>
                 </select>
             </div>
             <button id="btnNovo" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
@@ -201,7 +207,7 @@ const API_MODULO = '/api/iga';       // /permissoes é do módulo, não do tipo
 const estado = {
   permissoes: null,
   tablets: [],
-  filtros: { q: '', estado: '' },
+  filtros: { q: '', estado: '', local: '' },
   aberto: null,
 };
 
@@ -304,6 +310,7 @@ async function carregar() {
   const p = new URLSearchParams();
   if (estado.filtros.q) p.set('q', estado.filtros.q);
   if (estado.filtros.estado) p.set('estado', estado.filtros.estado);
+  if (estado.filtros.local) p.set('local', estado.filtros.local);
   estado.tablets = await pedir('/?' + p.toString());
   desenhar();
 }
@@ -320,7 +327,32 @@ function desenhar() {
     return;
   }
 
-  corpo.innerHTML = estado.tablets.map(t => {
+  // Agrupada por divisão: os tablets pertencem a uma (Div Pol, Divisão de
+  // Trânsito, Segurança Privada) e é por ela que se distribuem. A API já os
+  // devolve ordenados pela divisão, portanto cada grupo é uma fila seguida, e o
+  // cabeçalho do grupo entra sempre que a divisão muda.
+  const porDivisao = new Map();
+  for (const t of estado.tablets) {
+    const k = t.localizacao || '';
+    if (!porDivisao.has(k)) porDivisao.set(k, []);
+    porDivisao.get(k).push(t);
+  }
+  const cabecalho = (divisao, lista) => {
+    const partes = [`${lista.length} ${lista.length === 1 ? 'tablet' : 'tablets'}`];
+    for (const [e, um, varios] of [['atribuido', 'entregue', 'entregues'], ['disponivel', 'disponível', 'disponíveis'],
+                                   ['avariado', 'avariado', 'avariados'], ['abatido', 'abatido', 'abatidos']]) {
+      const n = lista.filter(t => t.estado === e).length;
+      if (n) partes.push(`${n} ${n === 1 ? um : varios}`);
+    }
+    return `<tr class="bg-slate-50">
+      <th colspan="5" scope="rowgroup" class="text-left px-3 py-2 border-t border-slate-200">
+        <span class="text-sm font-extrabold text-slate-900">${divisao ? esc(divisao) : 'Sem divisão'}</span>
+        <span class="ml-2 text-xs font-normal text-slate-500">${partes.join(' · ')}</span>
+      </th>
+    </tr>`;
+  };
+
+  corpo.innerHTML = [...porDivisao].map(([divisao, lista]) => cabecalho(divisao, lista) + lista.map(t => {
     const entregue = t.matricula || t.nome_utilizador
       ? `${esc(t.nome_utilizador || '—')}${t.matricula ? ` <span class="text-slate-600">· ${esc(t.matricula)}</span>` : ''}`
       : '<span class="text-slate-300">—</span>';
@@ -330,8 +362,7 @@ function desenhar() {
     // ficam por cima: o `closest()` do clique encontra-os antes da linha.
     return `<tr class="hover:bg-blue-50 cursor-pointer focus:outline-none focus:bg-blue-50" data-detalhe="${t.id}"
               tabindex="0" aria-label="Ver detalhe do tablet ${esc(nomeDoTablet(t))}">
-      <td class="px-3 py-2">${identificacao(t)}
-        ${t.localizacao ? `<div class="text-[11px] text-slate-600">${esc(t.localizacao)}</div>` : ''}</td>
+      <td class="px-3 py-2">${identificacao(t)}</td>
       <td class="px-3 py-2">${entregue}</td>
       <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${t.data_entrega ? dataPt(t.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2">${etiqueta(t.estado)}${etiquetaAbate(t.abate_estado === 'proposto' ? 'proposto' : '')}</td>
@@ -346,12 +377,22 @@ function desenhar() {
           <i data-lucide="archive" class="w-4 h-4"></i></button>
       </td>
     </tr>`;
-  }).join('');
+  }).join('')).join('');
 
   document.getElementById('rodape').textContent =
     `${estado.tablets.length} ${estado.tablets.length === 1 ? 'tablet' : 'tablets'}` +
-    (estado.filtros.q || estado.filtros.estado ? ' (filtrado)' : '');
+    (porDivisao.size > 1 ? ` em ${porDivisao.size} divisões` : '') +
+    (estado.filtros.q || estado.filtros.estado || estado.filtros.local ? ' (filtrado)' : '');
   if (window.lucide) lucide.createIcons();
+}
+
+/** Enche o filtro das divisões com as que existem, sem perder a escolhida. */
+async function carregarDivisoes() {
+  const locais = await pedir('/locais');
+  const sel = document.getElementById('filtroDivisao');
+  sel.innerHTML = '<option value="">Todas</option>' + locais.map(l =>
+    `<option value="${esc(l.localizacao)}">${esc(l.localizacao)} (${l.total})</option>`).join('');
+  sel.value = estado.filtros.local;
 }
 
 async function carregarEstatisticas() {
@@ -413,7 +454,7 @@ async function abrirDetalhe(id) {
       </div>
       <dl class="grid grid-cols-2 gap-3">
         ${linhaCampo('Nº de inventário', esc(t.num_inventario))}
-        ${linhaCampo('Serviço', esc(t.localizacao))}
+        ${linhaCampo('Divisão', esc(t.localizacao))}
         ${linhaCampo('Marca', esc(t.marca))}
         ${linhaCampo('Modelo', esc(t.modelo))}
         ${linhaCampo('Nº de série', t.num_serie ? `<span class="font-mono">${esc(t.num_serie)}</span>` : '')}
@@ -501,7 +542,8 @@ function dadosDoModal() {
 
 /** Recarrega o que está à vista depois de uma alteração. */
 async function refrescar(idDetalhe) {
-  await Promise.all([carregar(), carregarEstatisticas()]);
+  // As divisões também: um tablet editado pode ter levado uma nova.
+  await Promise.all([carregar(), carregarEstatisticas(), carregarDivisoes()]);
   if (idDetalhe) await abrirDetalhe(idDetalhe);
 }
 
@@ -612,7 +654,7 @@ function modalEquipamento(t) {
                 : (podeAdmin ? '' : 'O PIN e o PUK só se alteram pela administração.'),
     campos: [
       { nome: 'num_inventario', rotulo: 'Nº de inventário', tipo: 'text', valor: t.num_inventario, dica: '29/TAB/2023' },
-      { nome: 'localizacao', rotulo: 'Serviço', tipo: 'text', valor: t.localizacao, lista: 'listaLocais', dica: 'Divisão de Trânsito, …' },
+      { nome: 'localizacao', rotulo: 'Divisão', tipo: 'text', valor: t.localizacao, lista: 'listaLocais', dica: 'Divisão de Trânsito, …' },
       { nome: 'marca', rotulo: 'Marca', tipo: 'text', valor: t.marca || 'SAMSUNG' },
       { nome: 'modelo', rotulo: 'Modelo', tipo: 'text', valor: t.modelo, dica: 'GALAXY TAB S10 FE 256GB' },
       { nome: 'num_serie', rotulo: 'Nº de série', tipo: 'text', valor: t.num_serie },
@@ -733,6 +775,10 @@ document.getElementById('procura').addEventListener('input', ev => {
 });
 document.getElementById('filtroEstado').addEventListener('change', ev => {
   estado.filtros.estado = ev.target.value;
+  carregar().catch(e => toast(e.message, 'erro'));
+});
+document.getElementById('filtroDivisao').addEventListener('change', ev => {
+  estado.filtros.local = ev.target.value;
   carregar().catch(e => toast(e.message, 'erro'));
 });
 
@@ -1090,7 +1136,7 @@ async function arrancar() {
   if (estado.permissoes.canEdit) document.getElementById('btnNovo').classList.remove('hidden');
 
   try {
-    await Promise.all([carregarEstatisticas(), carregar()]);
+    await Promise.all([carregarEstatisticas(), carregar(), carregarDivisoes()]);
   } catch (err) {
     toast(err.message, 'erro');
   }

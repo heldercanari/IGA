@@ -148,6 +148,15 @@ router.get('/', async (req, res) => {
       pedido.input('estado', sql.VarChar(20), estado);
       filtros.push('t.estado = @estado');
     }
+    // A divisão a que o tablet pertence, valor exacto (o filtro enche-se do
+    // /locais); `--sem--` são os que ainda não têm divisão.
+    const local = limpar(req.query.local);
+    if (local === '--sem--') {
+      filtros.push('t.localizacao IS NULL');
+    } else if (local) {
+      pedido.input('local', sql.NVarChar(120), local);
+      filtros.push('t.localizacao = @local');
+    }
 
     const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
     const r = await pedido.query(`
