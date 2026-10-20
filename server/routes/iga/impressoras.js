@@ -120,9 +120,11 @@ router.get('/estatisticas', async (req, res) => {
         (SELECT COUNT(*) FROM dbo.impressoras i WHERE localizacao IS NULL AND NOT EXISTS (SELECT 1 FROM dbo.impressoras_abates b WHERE b.impressora_id = i.id AND b.estado = 'abatido'))     AS sem_local,
         (SELECT COUNT(*) FROM dbo.impressoras_abates WHERE estado = 'abatido')       AS abatidas,
         (SELECT COUNT(*) FROM dbo.impressoras_abates WHERE estado = 'proposto')      AS propostos,
-        (SELECT COUNT(DISTINCT localizacao) FROM dbo.impressoras WHERE localizacao IS NOT NULL) AS locais,
-        (SELECT COUNT(DISTINCT modelo) FROM dbo.impressoras WHERE modelo IS NOT NULL) AS modelos,
-        (SELECT COUNT(*) FROM dbo.impressoras WHERE ip IS NULL)                       AS sem_ip`);
+        -- Serviços, modelos e IP em falta contam só o parque activo: uma abatida
+        -- já não está em serviço nenhum.
+        (SELECT COUNT(DISTINCT localizacao) FROM dbo.impressoras i WHERE localizacao IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.impressoras_abates b WHERE b.impressora_id = i.id AND b.estado = 'abatido')) AS locais,
+        (SELECT COUNT(DISTINCT modelo) FROM dbo.impressoras i WHERE modelo IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dbo.impressoras_abates b WHERE b.impressora_id = i.id AND b.estado = 'abatido')) AS modelos,
+        (SELECT COUNT(*) FROM dbo.impressoras i WHERE ip IS NULL AND NOT EXISTS (SELECT 1 FROM dbo.impressoras_abates b WHERE b.impressora_id = i.id AND b.estado = 'abatido')) AS sem_ip`);
     res.json(r.recordset[0]);
   } catch (err) {
     falhou(res, 'obter as estatísticas das impressoras', err);

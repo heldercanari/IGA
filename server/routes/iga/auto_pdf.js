@@ -93,8 +93,12 @@ function dataPt(d) {
  *   itens: [{ descricao, apto, marca, serie, qt }]
  * Devolve um Buffer com o PDF.
  */
+/** O modelo lê-se uma vez: são 370 KB que não mudam enquanto o servidor corre. */
+let modeloEmMemoria = null;
+
 async function gerarAutoPdf(auto) {
-  const doc = await PDFDocument.load(fs.readFileSync(MODELO), { ignoreEncryption: true });
+  if (!modeloEmMemoria) modeloEmMemoria = fs.readFileSync(MODELO);
+  const doc = await PDFDocument.load(modeloEmMemoria, { ignoreEncryption: true });
   // Sem o formulário: ver o comentário do topo.
   doc.catalog.delete(PDFName.of('AcroForm'));
   const folha = doc.getPage(0);

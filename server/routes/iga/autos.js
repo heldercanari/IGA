@@ -390,15 +390,26 @@ function montarAutos(router, cfg) {
       const itens = await itensDoAuto(pool, a.id);
       if (!itens.length) return res.status(409).json({ error: 'O auto não tem nenhum equipamento.' });
 
-      if (t.atribuicoes) {
-        await pool.request().input('auto', sql.Int, a.id).input('fim', sql.Date, a.data)
-          .query(`UPDATE ${t.atribuicoes} SET data_devolucao = @fim
-                  WHERE data_devolucao IS NULL
-                    AND ${t.fk} IN (SELECT ${t.fk} FROM ${t.abates} WHERE auto_id = @auto)`);
+      // Numa transação: ou fica tudo abatido, ou nada. Fora dela, uma falha a meio
+      // deixava parte do auto abatida, parte não, e o auto ainda por homologar.
+      // O `recalcular` recebe a transação no lugar da pool — as duas têm `.request()`.
+      const tx = new sql.Transaction(pool);
+      await tx.begin();
+      try {
+        if (t.atribuicoes) {
+          await tx.request().input('auto', sql.Int, a.id).input('fim', sql.Date, a.data)
+            .query(`UPDATE ${t.atribuicoes} SET data_devolucao = @fim
+                    WHERE data_devolucao IS NULL
+                      AND ${t.fk} IN (SELECT ${t.fk} FROM ${t.abates} WHERE auto_id = @auto)`);
+        }
+        await tx.request().input('auto', sql.Int, a.id).input('quando', sql.Date, a.data)
+          .query(`UPDATE ${t.abates} SET estado = 'abatido', data_abate = @quando WHERE auto_id = @auto`);
+        if (t.recalcular) for (const i of itens) await t.recalcular(tx, i.equipamento_id);
+        await tx.commit();
+      } catch (e) {
+        await tx.rollback().catch(() => {});
+        throw e;
       }
-      await pool.request().input('auto', sql.Int, a.id).input('quando', sql.Date, a.data)
-        .query(`UPDATE ${t.abates} SET estado = 'abatido', data_abate = @quando WHERE auto_id = @auto`);
-      if (t.recalcular) for (const i of itens) await t.recalcular(pool, i.equipamento_id);
 
       const quandoHomologado = data(req.body && req.body.data_homologacao) || hoje();
       await (await poolModulo).request().input('id', sql.Int, a.id).input('h', sql.Date, quandoHomologado)

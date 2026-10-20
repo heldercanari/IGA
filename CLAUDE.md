@@ -231,8 +231,12 @@ Desde a `006`/`007` abater não é um clique: **propõe-se** (fica `estado = 'pr
   coordenadas dos campos — o modelo é XFA e não se preenche por programa. As coordenadas estão
   no `auto_pdf.js`; **se a DMSI mudar o modelo, mudam com ele**. A tabela tem 10 linhas: com
   mais, vão 9 e a 10.ª remete para o anexo, que traz a lista toda.
-- **Um abate homologado não se anula** (o papel está assinado). Os abates de antes dos autos
-  — sem `auto_id`, como os 39 dos telemóveis — anulam-se pela administração, como antes.
+- **Um abate homologado não se anula** (o papel está assinado). Um abate de antes dos autos,
+  sem `auto_id`, anula-se pela administração, como antes.
+- ⚠️ **Os 39 "abates" dos telemóveis que vieram da carga eram propostas, não abates**
+  (decisão de 2026-10-20): a folha dizia "para abate", e ainda não foram. Passaram a
+  `'proposto'` — 12 continuam entregues a quem os tem — e a data que a folha trazia, nos 4
+  que a tinham, ficou nas `obs` do abate. Entram no próximo auto dos telemóveis.
 - **O Auto 02/2023 dos rádios foi lançado à mão** (148 rádios, do `abate rádios.pdf`), já
   homologado. Não o "corrijas" para rascunho.
 
