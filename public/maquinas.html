@@ -313,14 +313,15 @@ function desenhar() {
            ${m.data_entrega ? dataPt(m.data_entrega) : 'sem data de levantamento'}</div>`
       : '<span class="text-emerald-700 font-semibold text-xs">disponível</span>';
 
-    return `<tr class="hover:bg-slate-50">
+    // A linha inteira abre a ficha — não há botão de olho. Os botões de acção
+    // ficam por cima: o `closest()` do clique encontra-os antes da linha.
+    return `<tr class="hover:bg-blue-50 cursor-pointer focus:outline-none focus:bg-blue-50" data-detalhe="${m.id}"
+              tabindex="0" aria-label="Ver detalhe da máquina ${esc(m.pm_id || m.num_serie || '')}">
       <td class="px-3 py-2 font-bold text-slate-900">${m.pm_id ? esc(m.pm_id) : '<span class="text-slate-300 font-normal">—</span>'}</td>
       <td class="px-3 py-2 text-slate-700">${esc(m.marca || '—')}</td>
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${m.num_serie ? esc(m.num_serie) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2">${atribuido}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
-        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${m.id}" title="Ver ficha" aria-label="Ver a ficha da máquina ${esc(m.pm_id || m.num_serie || '')}">
-          <i data-lucide="eye" class="w-4 h-4"></i></button>
         <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${m.id}" title="Entregar" ${podeEditar ? '' : 'disabled'}>
           <i data-lucide="user-plus" class="w-4 h-4"></i></button>
         <button class="accao text-emerald-600 hover:bg-emerald-50" data-devolver="${m.id}" title="Devolver" ${podeEditar && m.atribuicao_id ? '' : 'disabled'}>
@@ -629,6 +630,14 @@ document.getElementById('procura').addEventListener('input', ev => {
 document.getElementById('filtroEstado').addEventListener('change', ev => {
   estado.filtros.estado = ev.target.value;
   carregar().catch(e => toast(e.message, 'erro'));
+});
+
+// A linha abre-se também pelo teclado: Tab até ela e Enter, como num botão.
+document.getElementById('tabela').addEventListener('keydown', ev => {
+  const linha = ev.target.closest && ev.target.closest('tr[data-detalhe]');
+  if (!linha || ev.target !== linha || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  ev.preventDefault();
+  abrirDetalhe(Number(linha.dataset.detalhe)).catch(e => toast(e.message, 'erro'));
 });
 
 document.addEventListener('keydown', ev => {

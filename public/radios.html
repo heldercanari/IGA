@@ -314,7 +314,10 @@ function desenharParque() {
     const atribuido = r.matricula || r.nome_utilizador
       ? `${esc(r.nome_utilizador || '—')}${r.matricula ? ` <span class="text-slate-600">· ${esc(r.matricula)}</span>` : ''}`
       : '<span class="text-slate-300">—</span>';
-    return `<tr class="hover:bg-slate-50">
+    // A linha inteira abre a ficha — não há botão de olho. Os botões de acção
+    // ficam por cima: o `closest()` do clique encontra-os antes da linha.
+    return `<tr class="hover:bg-blue-50 cursor-pointer focus:outline-none focus:bg-blue-50" data-detalhe="${r.id}"
+              tabindex="0" aria-label="Ver detalhe do rádio ${esc(r.indicativo || r.num_serie || '')}">
       <td class="px-3 py-2 text-slate-700">${r.alias_tei ? esc(r.alias_tei) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 font-bold text-slate-900">${esc(r.indicativo || '—')}</td>
       <td class="px-3 py-2 font-mono text-xs text-slate-600">${r.num_serie ? esc(r.num_serie) : '<span class="text-slate-300">—</span>'}</td>
@@ -322,8 +325,6 @@ function desenharParque() {
       <td class="px-3 py-2">${atribuido}</td>
       <td class="px-3 py-2 text-slate-600 whitespace-nowrap">${r.data_entrega ? dataPt(r.data_entrega) : '<span class="text-slate-300">—</span>'}</td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
-        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${r.id}" title="Ver detalhe" aria-label="Ver detalhe do rádio ${esc(r.indicativo || r.num_serie || '')}">
-          <i data-lucide="eye" class="w-4 h-4"></i></button>
         <button class="accao text-blue-600 hover:bg-blue-50" data-entregar="${r.id}" title="Entregar" ${podeEditar && r.estado !== 'abatido' ? '' : 'disabled'}>
           <i data-lucide="user-plus" class="w-4 h-4"></i></button>
         <button class="accao text-emerald-600 hover:bg-emerald-50" data-devolver="${r.id}" title="Devolver" ${podeEditar && r.atribuicao_id ? '' : 'disabled'}>
@@ -748,6 +749,14 @@ document.getElementById('filtroEstado').addEventListener('change', ev => {
 document.getElementById('filtroMarca').addEventListener('change', ev => {
   estado.filtros.marca = ev.target.value;
   carregarParque().catch(e => toast(e.message, 'erro'));
+});
+
+// A linha abre-se também pelo teclado: Tab até ela e Enter, como num botão.
+document.getElementById('tabelaParque').addEventListener('keydown', ev => {
+  const linha = ev.target.closest && ev.target.closest('tr[data-detalhe]');
+  if (!linha || ev.target !== linha || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  ev.preventDefault();
+  abrirDetalhe(Number(linha.dataset.detalhe)).catch(e => toast(e.message, 'erro'));
 });
 
 document.addEventListener('keydown', ev => {

@@ -318,7 +318,10 @@ function desenhar() {
 
   corpo.innerHTML = estado.impressoras.map(i => {
     const diverge = hostDivergeDoIP(i.ip, i.host_name);
-    return `<tr class="hover:bg-slate-50">
+    // A linha inteira abre a ficha — não há botão de olho. Os botões de acção
+    // ficam por cima: o `closest()` do clique encontra-os antes da linha.
+    return `<tr class="hover:bg-blue-50 cursor-pointer focus:outline-none focus:bg-blue-50" data-detalhe="${i.id}"
+              tabindex="0" aria-label="Ver detalhe da impressora ${esc(i.num_serie || i.host_name || '')}">
       <td class="px-3 py-2 font-bold text-slate-900">${i.localizacao
         ? esc(i.localizacao)
         : '<span class="text-amber-700 font-semibold">sem local</span>'}</td>
@@ -334,8 +337,6 @@ function desenhar() {
           <i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline-block align-text-bottom"></i></span>` : ''}
       </td>
       <td class="px-3 py-2 text-right whitespace-nowrap">
-        <button class="accao text-slate-500 hover:bg-slate-100" data-detalhe="${i.id}" title="Ver ficha" aria-label="Ver a ficha da impressora ${esc(i.num_serie || i.host_name || '')}">
-          <i data-lucide="eye" class="w-4 h-4"></i></button>
         <button class="accao text-blue-600 hover:bg-blue-50" data-mudar="${i.id}" title="Mudar de serviço" ${podeEditar ? '' : 'disabled'}>
           <i data-lucide="map-pin" class="w-4 h-4"></i></button>
         <button class="accao text-slate-600 hover:bg-slate-100" data-editar="${i.id}" title="Editar" ${podeEditar ? '' : 'disabled'}>
@@ -634,6 +635,14 @@ document.getElementById('procura').addEventListener('input', ev => {
 document.getElementById('filtroLocal').addEventListener('change', ev => {
   estado.filtros.local = ev.target.value;
   carregar().catch(e => toast(e.message, 'erro'));
+});
+
+// A linha abre-se também pelo teclado: Tab até ela e Enter, como num botão.
+document.getElementById('tabela').addEventListener('keydown', ev => {
+  const linha = ev.target.closest && ev.target.closest('tr[data-detalhe]');
+  if (!linha || ev.target !== linha || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  ev.preventDefault();
+  abrirDetalhe(Number(linha.dataset.detalhe)).catch(e => toast(e.message, 'erro'));
 });
 
 document.addEventListener('keydown', ev => {
