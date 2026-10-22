@@ -421,6 +421,61 @@ router.post('/:id/devolver', exigirEdicao, async (req, res) => {
   }
 });
 
+/**
+ * PUT /telemoveis/atribuicoes/:id — corrigir uma entrega sem a refazer.
+ *
+ * Um nome mal escrito, a matrícula em falta, a data errada: antes só se
+ * emendava devolvendo e entregando outra vez, o que deixava no histórico duas
+ * entregas onde houve uma. Aqui a entrega é a mesma linha, corrigida.
+ *
+ * Não abre nem fecha nada: a data de devolução só se corrige numa entrega que
+ * já foi devolvida (devolver é o `/devolver`), por isso o estado do telemóvel
+ * não muda e não há `recalcularEstado()`. Um campo que não venha fica como está.
+ */
+router.put('/atribuicoes/:id', exigirEdicao, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    if (!pool) return res.status(500).json({ error: 'Sem ligação à base dos telemóveis.' });
+
+    const atual = await pool.request().input('id', sql.Int, id)
+      .query('SELECT * FROM dbo.telemoveis_atribuicoes WHERE id = @id');
+    const a = atual.recordset[0];
+    if (!a) return res.status(404).json({ error: 'Entrega não encontrada.' });
+
+    const b = req.body || {};
+    const vem = campo => b[campo] !== undefined;
+    const nome = vem('nome_utilizador') ? limpar(b.nome_utilizador) : a.nome_utilizador;
+    const matricula = vem('matricula') ? inteiro(b.matricula) : a.matricula;
+    if (!nome && matricula === null) {
+      return res.status(400).json({ error: 'É preciso a matrícula ou o nome de quem tem o telemóvel.' });
+    }
+    const entrega = vem('data_entrega') ? data(b.data_entrega) : a.data_entrega;
+    let devolucao = a.data_devolucao;
+    if (a.data_devolucao && vem('data_devolucao')) {
+      devolucao = data(b.data_devolucao);
+      if (!devolucao) return res.status(400).json({ error: 'A data de devolução não pode ficar vazia numa entrega devolvida.' });
+    }
+
+    await pool.request()
+      .input('id', sql.Int, id)
+      .input('mec', sql.Int, matricula)
+      .input('nome', sql.NVarChar(200), nome)
+      .input('entrega', sql.Date, entrega)
+      .input('devolucao', sql.Date, devolucao)
+      .input('obs', sql.NVarChar(sql.MAX), vem('obs') ? limpar(b.obs) : a.obs)
+      .query(`UPDATE dbo.telemoveis_atribuicoes
+              SET matricula = @mec, nome_utilizador = @nome, data_entrega = @entrega,
+                  data_devolucao = @devolucao, obs = @obs
+              WHERE id = @id`);
+    res.json({ ok: true, telemovel_id: a.telemovel_id });
+  } catch (err) {
+    falhou(res, 'corrigir a entrega', err);
+  }
+});
+
 // ─── Avarias ───────────────────────────────────────────────
 
 /** Fica antes de `/:id/...` genérico? Não é preciso: o caminho é diferente. */
