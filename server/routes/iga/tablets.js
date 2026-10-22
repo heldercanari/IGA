@@ -437,6 +437,56 @@ router.post('/:id/devolver', exigirEdicao, async (req, res) => {
   }
 });
 
+/**
+ * PUT /tablets/atribuicoes/:id — corrigir uma entrega sem a refazer.
+ *
+ * O mesmo dos telemóveis e dos rádios: corrige-se a própria linha, em vez de
+ * devolver e entregar de novo. Não abre nem fecha nada — a devolução só se
+ * corrige numa entrega já devolvida —, por isso não há `recalcularEstado()`.
+ * Um campo que não venha fica como está.
+ */
+router.put('/atribuicoes/:id', exigirEdicao, async (req, res) => {
+  try {
+    const id = inteiro(req.params.id);
+    if (id === null) return res.status(400).json({ error: 'Identificador inválido.' });
+
+    const pool = await poolPromise;
+    if (!pool) return res.status(500).json({ error: 'Sem ligação à base de dados.' });
+    const atual = await pool.request().input('id', sql.Int, id)
+      .query('SELECT * FROM dbo.tablets_atribuicoes WHERE id = @id');
+    const a = atual.recordset[0];
+    if (!a) return res.status(404).json({ error: 'Entrega não encontrada.' });
+
+    const b = req.body || {};
+    const vem = campo => b[campo] !== undefined;
+    const nome = vem('nome_utilizador') ? limpar(b.nome_utilizador) : a.nome_utilizador;
+    const matricula = vem('matricula') ? inteiro(b.matricula) : a.matricula;
+    if (!nome && matricula === null) {
+      return res.status(400).json({ error: 'É preciso a matrícula ou o nome de quem tem o tablet.' });
+    }
+    let devolucao = a.data_devolucao;
+    if (a.data_devolucao && vem('data_devolucao')) {
+      devolucao = data(b.data_devolucao);
+      if (!devolucao) return res.status(400).json({ error: 'A data de devolução não pode ficar vazia numa entrega devolvida.' });
+    }
+
+    await pool.request()
+      .input('id', sql.Int, id)
+      .input('mec', sql.Int, matricula)
+      .input('nome', sql.NVarChar(200), nome)
+      .input('entrega', sql.Date, vem('data_entrega') ? data(b.data_entrega) : a.data_entrega)
+      .input('devolucao', sql.Date, devolucao)
+      .input('obs', sql.NVarChar(sql.MAX), vem('obs') ? limpar(b.obs) : a.obs)
+      .query(`UPDATE dbo.tablets_atribuicoes
+              SET matricula = @mec, nome_utilizador = @nome, data_entrega = @entrega,
+                  data_devolucao = @devolucao, obs = @obs
+              WHERE id = @id`);
+    res.json({ ok: true, tablet_id: a.tablet_id });
+  } catch (err) {
+    falhou(res, 'corrigir a entrega', err);
+  }
+});
+
 // ─── Avarias ───────────────────────────────────────────────
 
 router.post('/avarias/:id/reparar', exigirEdicao, async (req, res) => {

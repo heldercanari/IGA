@@ -391,6 +391,8 @@ async function abrirDetalhe(id) {
         </div>
         ${a.obs ? `<div class="text-xs text-slate-600 mt-0.5">${esc(a.obs)}</div>` : ''}
       </div>
+      ${estado.permissoes.canEdit
+        ? `<button class="ml-auto self-start text-xs font-semibold text-blue-600 hover:underline" data-editar-entrega="${a.id}">Editar</button>` : ''}
     </li>`).join('') : '<li class="text-sm text-slate-600 py-2">Nunca foi entregue.</li>';
 
   const avarias = r.avarias.length ? r.avarias.map(a => `
@@ -541,6 +543,38 @@ async function carregarPessoas() {
   } catch (e) { /* o autocompletar é um extra: sem ele o campo continua a funcionar */ }
 }
 
+/**
+ * Corrigir uma entrega — o nome, a matrícula, a guia, as datas — sem a devolver
+ * e entregar de novo, que deixava no histórico duas entregas onde houve uma.
+ * Não abre nem fecha nada: a devolução só se corrige se já tiver acontecido.
+ */
+function modalEditarEntrega(idEntrega) {
+  const r = estado.radioAberto;
+  const a = (r.atribuicoes || []).find(x => x.id === idEntrega);
+  if (!a) return;
+  const iso = v => v ? String(v).slice(0, 10) : '';
+  abrirModal({
+    titulo: `Editar a entrega do rádio ${r.indicativo || ''}`.trim(),
+    ajuda: a.data_devolucao ? 'Entrega já devolvida.' : 'Entrega em curso: continua entregue depois de gravar.',
+    campos: [
+      { nome: 'matricula', rotulo: 'Matrícula', tipo: 'text', valor: a.matricula, lista: 'listaPessoas' },
+      { nome: 'nome_utilizador', rotulo: 'Nome', tipo: 'text', valor: a.nome_utilizador },
+      { nome: 'data_entrega', rotulo: 'Data de entrega', tipo: 'date', valor: iso(a.data_entrega) },
+    ].concat(a.data_devolucao
+      ? [{ nome: 'data_devolucao', rotulo: 'Data de devolução', tipo: 'date', valor: iso(a.data_devolucao), obrigatorio: true }]
+      : []).concat([
+      { nome: 'guia', rotulo: 'Guia', tipo: 'text', valor: a.guia, dica: 'Referência da guia em papel, se houver' },
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: a.obs },
+    ]),
+    gravar: async d => {
+      await enviar(`/atribuicoes/${idEntrega}`, d, 'PUT');
+      toast('Entrega corrigida.');
+      await refrescar(r.id);
+    },
+  });
+  carregarPessoas();
+}
+
 function modalDevolver(id) {
   const r = estado.radios.find(x => x.id === id) || estado.radioAberto || {};
   abrirModal({
@@ -672,7 +706,7 @@ function procuraAdiada(fn) {
 }
 
 document.addEventListener('click', async ev => {
-  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-reparar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnNovo,#btnExportar');
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-avaria],[data-reparar],[data-editar-entrega],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnNovo,#btnExportar');
   if (!alvo) return;
   const d = alvo.dataset;
   try {
@@ -686,6 +720,7 @@ document.addEventListener('click', async ev => {
     if (d.devolver) return modalDevolver(Number(d.devolver));
     if (d.avaria) return modalAvaria(Number(d.avaria));
     if (d.reparar) return modalReparar(Number(d.reparar));
+    if (d.editarEntrega) return modalEditarEntrega(Number(d.editarEntrega));
     if (d.estado !== undefined && alvo.classList.contains('cartao')) {
       estado.filtros.estado = d.estado;
       document.getElementById('filtroEstado').value = d.estado;
