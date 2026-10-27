@@ -378,6 +378,8 @@ async function abrirDetalhe(id) {
         </div>
         ${a.obs ? `<div class="text-xs text-slate-600 mt-0.5">${esc(a.obs)}</div>` : ''}
       </div>
+      ${estado.permissoes.canEdit
+        ? `<button class="ml-auto self-start text-xs font-semibold text-blue-600 hover:underline" data-editar-entrega="${a.id}">Editar</button>` : ''}
     </li>`).join('') : '<li class="text-sm text-slate-600 py-2">Nunca foi levantada.</li>';
 
   document.getElementById('painelCorpo').innerHTML = `
@@ -504,6 +506,33 @@ function modalEntregar(id) {
   carregarPessoas();
 }
 
+function modalEditarEntrega(idEntrega) {
+  const m = estado.aberto;
+  const a = (m.atribuicoes || []).find(x => x.id === idEntrega);
+  if (!a) return;
+  const iso = v => v ? String(v).slice(0, 10) : '';
+  abrirModal({
+    titulo: `Editar o levantamento da máquina ${m.pm_id || ''}`.trim(),
+    ajuda: a.data_devolucao ? 'Levantamento já devolvido.' : 'Levantamento em curso: continua entregue depois de gravar.',
+    campos: [
+      { nome: 'matricula', rotulo: 'Matrícula', tipo: 'text', valor: a.matricula, lista: 'listaPessoas' },
+      { nome: 'nome_utilizador', rotulo: 'Nome', tipo: 'text', valor: a.nome_utilizador },
+      { nome: 'data_entrega', rotulo: 'Data do levantamento', tipo: 'date', valor: iso(a.data_entrega),
+        nota: 'Pode ficar vazia se não se souber.' },
+    ].concat(a.data_devolucao
+      ? [{ nome: 'data_devolucao', rotulo: 'Data de devolução', tipo: 'date', valor: iso(a.data_devolucao), obrigatorio: true }]
+      : []).concat([
+      { nome: 'obs', rotulo: 'Observações', tipo: 'textarea', valor: a.obs },
+    ]),
+    gravar: async d => {
+      await enviar(`/atribuicoes/${idEntrega}`, d, 'PUT');
+      toast('Levantamento corrigido.');
+      await refrescar(m.id);
+    },
+  });
+  carregarPessoas();
+}
+
 function modalDevolver(id) {
   const m = maquina(id);
   const tem = quemTem(m);
@@ -590,7 +619,7 @@ function procuraAdiada(fn) {
 }
 
 document.addEventListener('click', async ev => {
-  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-editar],[data-apagar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnNova,#btnExportar');
+  const alvo = ev.target.closest('[data-detalhe],[data-entregar],[data-devolver],[data-editar-entrega],[data-editar],[data-apagar],[data-estado],[data-fechar],[data-fechar-modal],#btnEditar,#btnNova,#btnExportar');
   if (!alvo) return;
   const d = alvo.dataset;
   try {
@@ -602,6 +631,7 @@ document.addEventListener('click', async ev => {
     if (d.detalhe) return abrirDetalhe(Number(d.detalhe));
     if (d.entregar) return modalEntregar(Number(d.entregar));
     if (d.devolver) return modalDevolver(Number(d.devolver));
+    if (d.editarEntrega) return modalEditarEntrega(Number(d.editarEntrega));
     if (d.editar) return modalEquipamento(maquina(Number(d.editar)));
     if (d.apagar) {
       const m = maquina(Number(d.apagar));
