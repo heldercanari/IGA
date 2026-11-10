@@ -40,7 +40,8 @@ importadores saíram do repositório — ver *[Os dados](#os-dados)*.
 > (`server/routes/iga/…`, `public/<tipo>.html`) são os mesmos da intranet de propósito,
 > para a cópia ser ficheiro-a-ficheiro.
 
-**Uma página por tipo de equipamento**, independente das outras: `public/radios.html`,
+**Uma página por tipo de equipamento**, independente das outras (os tipos criados pelo ecrã
+partilham uma, `public/equipamento.html` — ver *Tipos criados pelo ecrã*): `public/radios.html`,
 `public/telemoveis.html`, `public/impressoras.html`, `public/maquinas.html`, `public/tablets.html` e `public/gps.html`. Não há motor partilhado entre elas — é uma decisão tomada de olhos
 abertos: cada página é dona do seu ecrã, e em troca uma correcção de comportamento tem de ser
 repetida em todas. A secção *[Acrescentar um tipo de equipamento](#acrescentar-um-tipo-de-equipamento)*
@@ -121,6 +122,13 @@ sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\008_gps.sql
   Ver *Autos de abate*, abaixo.
 - `008_gps.sql` — os GPS dos reboques, nesta base: `gps` e `gps_abates`, e o `gps` entra no
   `CHECK` dos tipos do `autos_abate`. (A `007` é a dos telemóveis, noutra base — ver abaixo.)
+- `009_tipos.sql` — os tipos criados pelo ecrã: `tipos_equipamento`, `tipos_campos` e
+  `equipamentos` com as suas `_atribuicoes`, `_avarias` e `_abates`. Tira o `CHECK` dos tipos
+  do `autos_abate`, que deixou de poder listá-los à mão. Ver *Tipos criados pelo ecrã*, abaixo.
+
+```bash
+sqlcmd -S localhost -E -d RadiosDev -I -f 65001 -i migrations\009_tipos.sql
+```
 
 ### A segunda base: telemóveis
 
@@ -360,7 +368,42 @@ rádios e dos telemóveis grava a lista toda e apaga o que não vier. É deliber
 impressoras a acção mais comum é mudar uma de serviço, um pedido com um campo só, e com a regra
 dos outros isso apagava o IP, a série e o modelo.
 
+## Tipos criados pelo ecrã
+
+Desde a `009`, **a administração cria tipos de equipamento sem programação**, em
+`/tipos.html` (o botão "+ Novo tipo de equipamento" da entrada, visível só a `IGA-Admin`).
+Escolhe-se:
+
+- **o nome** (plural e singular), a descrição e o ícone do cartão;
+- **como se usa**: *entrega-se a pessoas* (entregas, devoluções e histórico, como os tablets)
+  ou *fica num local* (uma coluna, como as impressoras), e se **regista avarias**;
+- **os campos de base**: a identificação (obrigatória e única, com o nome que se quiser — "N.º
+  de inventário"), e marca, modelo e n.º de série, cada um ligado ou não;
+- **os campos adicionais**, pela ordem da ficha: texto, texto longo, número, data, lista de
+  opções ou sim/não — cada um obrigatório ou não, único ou não, e na tabela ou só na ficha.
+
+O tipo aparece logo na entrada como mais um cartão e abre em
+`/equipamento.html?tipo=<código>`, **uma página só para todos estes tipos**, que se desenha a
+partir da definição. Propor para abate e os autos de abate vêm sempre, pelas mesmas rotas dos
+outros.
+
+- **Os seis tipos de origem não mudam**: continuam com a sua página, o seu router e as suas
+  tabelas, e não aparecem no `tipos.html`.
+- **O modo de uso e as avarias só se alteram enquanto o tipo não tem equipamento.** O nome, o
+  ícone e os campos alteram-se sempre; o tipo de dado de um campo já criado não.
+- **Retirar um campo não apaga o que lá foi escrito**: os valores ficam na base e voltam se o
+  campo for reposto com o mesmo nome.
+- **Um tipo com equipamento ou com autos de abate não se apaga.**
+
+As rotas são `/api/iga/tipos` (a definição; escrever é de `IGA-Admin`) e
+`/api/iga/eq/<código>/…`, com as mesmas rotas de `<tipo>/…` da tabela de cima. Os campos
+adicionais vão e vêm dentro de `valores` (`{ "valores": { "tamanho": "M" } }`), e o `PUT` grava
+só o que vier no corpo.
+
 ## Acrescentar um tipo de equipamento
+
+**Pelo ecrã, é a secção de cima.** O que se segue é para um tipo feito à mão — com regras
+próprias que os campos do ecrã não dão (as credenciais dos telemóveis, o IP das impressoras).
 
 Cada tipo é uma página e um router próprios. Para juntar, por exemplo, computadores:
 

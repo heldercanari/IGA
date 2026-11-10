@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tipos de equipamento · IGA</title>
+    <link rel="icon" type="image/png" href="/iga/favicon.png">
+    <!-- Sem `defer`: o Tailwind v4 em browser compila as classes em JS e só as
+         aplica quando corre. Adiado para depois do parse, o browser chega a pintar
+         a página em cru. O ficheiro é local, não vem de CDN nenhum. O lucide fica
+         adiado — é só ícones, e o script de baixo já espera por ele. -->
+    <script src="/iga/tailwind.global.js"></script>
+    <script src="/iga/lucide.min.js" defer></script>
+    <style>
+        /* `hidden` é uma classe do Tailwind, portanto só existe depois de ele
+           compilar. Declará-la aqui garante que os modais e o toast não aparecem
+           empilhados na fracção de segundo anterior. */
+        .hidden { display: none; }
+
+        body, input, select, textarea, button {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        thead.pegajoso th { position: sticky; top: 0; z-index: 10; }
+        tbody tr { line-height: 1.3; }
+        .accao {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 6px; border: none;
+            background: transparent; cursor: pointer; flex-shrink: 0;
+            transition: background-color .15s, transform .1s;
+        }
+        .accao:hover { transform: scale(1.12); }
+        .accao:disabled { opacity: .25; cursor: not-allowed; transform: none; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<a href="#conteudo" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded">Saltar para o conteúdo</a>
+
+<!-- Toast -->
+<div id="toast" role="status" aria-live="polite" class="fixed top-5 right-5 z-50 hidden items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white" style="min-width:260px">
+    <span id="toastIcone" aria-hidden="true"></span>
+    <span id="toastMsg"></span>
+</div>
+
+<div id="ecraErro" role="alert" aria-atomic="true" class="hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 p-6">
+    <div class="text-center max-w-md mx-auto space-y-4 bg-white p-8 rounded-2xl border border-slate-200 shadow-xl">
+        <img src="/iga/logo_transparente.png" width="390" height="192" class="h-24 w-auto object-contain mx-auto" alt="Polícia Municipal de Lisboa">
+        <p id="erroTitulo" class="text-sm text-red-600 font-semibold"></p>
+        <p id="erroDetalhe" class="text-xs text-slate-600 leading-relaxed"></p>
+        <!-- A conta é para ser lida ao telefone ou copiada para um email: é o
+             único texto deste ecrã que tem de sair daqui exactamente como está. -->
+        <p id="erroConta" class="hidden text-xs text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2"></p>
+    </div>
+</div>
+
+<div id="app" class="max-w-[1400px] mx-auto p-6">
+
+    <header class="mb-6 flex flex-wrap gap-4 justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <a href="/iga.html" class="flex items-center gap-4 group" title="Voltar ao início">
+            <img src="/iga/logo_transparente.png" width="390" height="192" class="h-14 w-auto object-contain" alt="Polícia Municipal de Lisboa">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900 group-hover:text-blue-700 transition">Inventário e Gestão de Ativos
+                </h1>
+                <p class="text-slate-500 text-xs">Registo e Controlo de Equipamentos · NSIC</p>
+            </div>
+        </a>
+        <div class="text-right flex flex-col items-end gap-1">
+            <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded">
+                Utilizador: <span id="nomeUtilizador">a carregar…</span>
+            </span>
+            <span id="etiquetaAcesso" class="text-[11px] text-slate-600"></span>
+        </div>
+    </header>
+
+    <main id="conteudo" class="space-y-6">
+
+        <!-- ─── Os tipos que já existem ─────────────────────── -->
+        <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-lg font-extrabold text-slate-900">Tipos de equipamento</h2>
+                    <p class="text-xs text-slate-500 mt-0.5 max-w-2xl">Os tipos criados aqui aparecem na entrada como mais um cartão, com a sua página,
+                        os campos escolhidos, e as entregas ou o local, as avarias e os autos de abate.
+                        Os seis tipos de origem (rádios, telemóveis, impressoras, máquinas fotográficas, tablets e GPS) não se alteram aqui.</p>
+                </div>
+                <button id="btnNovoTipo" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+                    + Novo tipo de equipamento
+                </button>
+            </div>
+            <ul id="listaTipos" class="divide-y divide-slate-100"></ul>
+        </section>
+
+        <!-- ─── O formulário de um tipo ─────────────────────── -->
+        <form id="formTipo" class="hidden bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-8" novalidate>
+            <div>
+                <h2 id="formTitulo" class="text-lg font-extrabold text-slate-900">Novo tipo de equipamento</h2>
+                <p id="formAjuda" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+
+            <fieldset class="space-y-4">
+                <legend class="text-sm font-bold text-slate-700 mb-2">1. O tipo</legend>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <div>
+                        <label for="tNome" class="block text-xs font-semibold text-slate-600 mb-1">Nome, no plural *</label>
+                        <input id="tNome" type="text" maxlength="60" placeholder="Coletes balísticos"
+                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-slate-500 mt-1">É o título do cartão na entrada.</p>
+                    </div>
+                    <div>
+                        <label for="tSingular" class="block text-xs font-semibold text-slate-600 mb-1">Nome de um só *</label>
+                        <input id="tSingular" type="text" maxlength="60" placeholder="Colete balístico"
+                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-slate-500 mt-1">Vai nos títulos e no auto de abate.</p>
+                    </div>
+                    <div>
+                        <label for="tDescricao" class="block text-xs font-semibold text-slate-600 mb-1">Descrição curta</label>
+                        <input id="tDescricao" type="text" maxlength="120" placeholder="Marca ou serviço, por exemplo"
+                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-slate-500 mt-1">A linha pequena por baixo do nome.</p>
+                    </div>
+                </div>
+                <div>
+                    <p class="block text-xs font-semibold text-slate-600 mb-1">Ícone</p>
+                    <div id="tIcones" role="radiogroup" aria-label="Ícone" class="flex flex-wrap gap-2"></div>
+                </div>
+            </fieldset>
+
+            <fieldset class="space-y-3">
+                <legend class="text-sm font-bold text-slate-700 mb-2">2. Como se usa</legend>
+                <p id="avisoModo" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Este tipo já tem equipamento registado: o modo de uso e as avarias já não se alteram.</p>
+                <div class="grid gap-3 md:grid-cols-2">
+                    <label class="flex gap-3 items-start border border-slate-200 rounded-lg p-3 cursor-pointer hover:border-blue-300">
+                        <input type="radio" name="tModo" value="pessoas" class="mt-1">
+                        <span>
+                            <span class="block text-sm font-semibold text-slate-800">Entrega-se a pessoas</span>
+                            <span class="block text-xs text-slate-500">Regista quem o tem e desde quando, com devoluções e histórico. Como os rádios e os tablets.</span>
+                        </span>
+                    </label>
+                    <label class="flex gap-3 items-start border border-slate-200 rounded-lg p-3 cursor-pointer hover:border-blue-300">
+                        <input type="radio" name="tModo" value="local" class="mt-1">
+                        <span>
+                            <span class="block text-sm font-semibold text-slate-800">Fica num local</span>
+                            <span class="block text-xs text-slate-500">Regista onde está (serviço, sala, viatura), sem entregas. Como as impressoras e os GPS.</span>
+                        </span>
+                    </label>
+                </div>
+                <label class="flex gap-3 items-start">
+                    <input id="tAvarias" type="checkbox" class="mt-1">
+                    <span>
+                        <span class="block text-sm font-semibold text-slate-800">Regista avarias</span>
+                        <span class="block text-xs text-slate-500">Um equipamento com avaria aberta fica "avariado" até ser reparado.</span>
+                    </span>
+                </label>
+                <p class="text-xs text-slate-500">Propor para abate e os autos de abate vêm sempre.</p>
+            </fieldset>
+
+            <fieldset class="space-y-3">
+                <legend class="text-sm font-bold text-slate-700 mb-2">3. Campos de base</legend>
+                <div class="grid gap-4 md:grid-cols-2">
+                    <div>
+                        <label for="tRotIdent" class="block text-xs font-semibold text-slate-600 mb-1">Como se chama a identificação *</label>
+                        <input id="tRotIdent" type="text" maxlength="60" placeholder="N.º de inventário"
+                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-slate-500 mt-1">É obrigatória e não se repete: é por ela que cada equipamento é tratado.</p>
+                    </div>
+                    <div id="caixaRotLocal" class="hidden">
+                        <label for="tRotLocal" class="block text-xs font-semibold text-slate-600 mb-1">Como se chama o local</label>
+                        <input id="tRotLocal" type="text" maxlength="60" placeholder="Local"
+                               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-slate-500 mt-1">"Serviço", "Sala", "Viatura"…</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-x-6 gap-y-2">
+                    <label class="flex items-center gap-2 text-sm text-slate-800"><input id="tMarca" type="checkbox"> Marca</label>
+                    <label class="flex items-center gap-2 text-sm text-slate-800"><input id="tModelo" type="checkbox"> Modelo</label>
+                    <label class="flex items-center gap-2 text-sm text-slate-800"><input id="tSerie" type="checkbox"> N.º de série</label>
+                </div>
+                <p class="text-xs text-slate-500">A marca e o n.º de série são o que o modelo do auto de abate pede. As observações existem sempre.</p>
+            </fieldset>
+
+            <fieldset class="space-y-3">
+                <legend class="text-sm font-bold text-slate-700 mb-2">4. Campos adicionais</legend>
+                <p class="text-xs text-slate-500">Os campos próprios deste tipo, pela ordem em que aparecem na ficha.
+                    Retirar um campo não apaga o que já lá foi escrito: deixa só de se ver.</p>
+                <div id="tCampos" class="space-y-2"></div>
+                <button type="button" id="btnMaisCampo" class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2 rounded-lg">
+                    + Acrescentar campo
+                </button>
+            </fieldset>
+
+            <div class="flex flex-wrap justify-end gap-2 pt-4 border-t border-slate-100">
+                <button type="button" id="btnCancelar" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancelar</button>
+                <button type="submit" id="btnGravar" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50">Gravar</button>
+            </div>
+        </form>
+    </main>
+</div>
+
+<script>
+'use strict';
+
+/**
+ * Criar e alterar tipos de equipamento, sem programação.
+ *
+ * É a única página do módulo reservada à administração (`canAdmin`): um tipo
+ * novo muda a aplicação para todos. O que aqui se define — nome, modo, campos —
+ * é lido pela entrada (`iga.html`, um cartão por tipo) e pela página genérica
+ * (`equipamento.html?tipo=<código>`). As rotas são as do `tipos.js`.
+ *
+ * ⚠️ Os seis tipos feitos à mão não aparecem aqui nem se alteram aqui.
+ */
+const API = '/api/iga/tipos';     // as rotas deste ecrã
+const API_MODULO = '/api/iga';    // /permissoes é do módulo
+
+const estado = {
+  permissoes: null,
+  tipos: [],
+  icones: [],
+  editar: null,     // o tipo aberto no formulário; null num novo
+  campos: [],       // os campos adicionais do formulário, pela ordem
+  icone: 'box',
+};
+
+const TIPOS_DADO = [
+  ['texto', 'Texto'],
+  ['longo', 'Texto longo'],
+  ['numero', 'Número'],
+  ['data', 'Data'],
+  ['lista', 'Lista de opções'],
+  ['simnao', 'Sim / Não'],
+];
+
+// ─── Utilitários ───────────────────────────────────────────
+
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/**
+ * Datas em dd/mm/aaaa, lidas em UTC.
+ *
+ * A base guarda DATE e o SQL Server devolve-a como meia-noite UTC. Ler as
+ * componentes locais fazia a data recuar um dia em qualquer fuso a oeste de
+ * Lisboa — e a intranet é consultada de casa.
+ */
+function dataPt(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return esc(v);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+let toastTimer = null;
+function toast(msg, tipo) {
+  const el = document.getElementById('toast');
+  const cor = tipo === 'erro' ? 'bg-red-600' : tipo === 'aviso' ? 'bg-amber-600' : 'bg-emerald-600';
+  el.className = `fixed top-5 right-5 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold text-white ${cor}`;
+  document.getElementById('toastIcone').innerHTML =
+    `<i data-lucide="${tipo === 'erro' ? 'alert-circle' : tipo === 'aviso' ? 'alert-triangle' : 'check-circle'}" class="w-5 h-5"></i>`;
+  document.getElementById('toastMsg').textContent = msg;
+  if (window.lucide) lucide.createIcons();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+async function pedir(caminho, opcoes, base) {
+  const r = await fetch((base || API) + caminho, Object.assign({ headers: { 'Accept': 'application/json' } }, opcoes));
+  let corpo = null;
+  try { corpo = await r.json(); } catch (e) { /* resposta sem JSON */ }
+  if (!r.ok) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+  return corpo;
+}
+
+function enviar(caminho, dados, metodo) {
+  return pedir(caminho, {
+    method: metodo || 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(dados || {}),
+  });
+}
+
+// ─── A lista ───────────────────────────────────────────────
+
+async function carregar() {
+  const r = await pedir('/');
+  estado.tipos = r.tipos;
+  estado.icones = r.icones;
+  desenharLista();
+}
+
+function desenharLista() {
+  const lista = document.getElementById('listaTipos');
+  if (!estado.tipos.length) {
+    lista.innerHTML = '<li class="text-sm text-slate-600 py-3">Ainda não foi criado nenhum tipo. Comece pelo botão "Novo tipo de equipamento".</li>';
+    return;
+  }
+  lista.innerHTML = estado.tipos.map(t => {
+    const partes = [t.modo === 'pessoas' ? 'entrega-se a pessoas' : 'fica num local'];
+    if (t.tem_avarias) partes.push('com avarias');
+    partes.push(`${t.campos.length} ${t.campos.length === 1 ? 'campo adicional' : 'campos adicionais'}`);
+    partes.push(`${t.equipamentos} ${t.equipamentos === 1 ? 'registo' : 'registos'}`);
+    return `<li class="flex flex-wrap items-center gap-3 py-3">
+      <span class="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center flex-shrink-0">
+        <i data-lucide="${esc(t.icone)}" class="w-5 h-5"></i></span>
+      <div class="flex-1 min-w-[200px]">
+        <div class="font-bold text-slate-900">${esc(t.nome)}
+          ${t.descricao ? `<span class="font-normal text-slate-500 text-sm">· ${esc(t.descricao)}</span>` : ''}</div>
+        <div class="text-xs text-slate-500">${esc(partes.join(' · '))}</div>
+      </div>
+      <a href="/equipamento.html?tipo=${encodeURIComponent(t.codigo)}" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700">Abrir</a>
+      <button data-editar="${esc(t.codigo)}" class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700">Alterar</button>
+      <button data-apagar="${esc(t.codigo)}" ${t.equipamentos ? 'disabled title="Tem equipamento registado: não se apaga"' : ''}
+              class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 text-red-600 disabled:opacity-40 disabled:cursor-not-allowed">Apagar</button>
+    </li>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+// ─── O formulário ──────────────────────────────────────────
+
+function desenharIcones() {
+  document.getElementById('tIcones').innerHTML = estado.icones.map(nome => {
+    const escolhido = nome === estado.icone;
+    return `<button type="button" role="radio" aria-checked="${escolhido}" aria-label="${esc(nome)}" data-icone="${esc(nome)}"
+      class="w-10 h-10 rounded-lg border flex items-center justify-center transition ${escolhido
+        ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-blue-300'}">
+      <i data-lucide="${esc(nome)}" class="w-5 h-5"></i></button>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+/**
+ * As linhas dos campos adicionais. Cada uma lê e escreve o `estado.campos` pelo
+ * índice: o que se vê é sempre o que vai ser gravado.
+ *
+ * O tipo de dado de um campo que já existe fica bloqueado: os valores gravados
+ * foram validados como o que ele era (o servidor também não o deixa mudar).
+ */
+function desenharCampos() {
+  const base = 'border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const caixa = document.getElementById('tCampos');
+  if (!estado.campos.length) {
+    caixa.innerHTML = '<p class="text-sm text-slate-600">Sem campos adicionais. O tipo fica só com os campos de base.</p>';
+    return;
+  }
+  caixa.innerHTML = estado.campos.map((c, i) => {
+    const antigo = !!c.codigo;
+    const marca = (chave, texto, pode) => `<label class="flex items-center gap-1.5 text-xs ${pode ? 'text-slate-700' : 'text-slate-300'}">
+      <input type="checkbox" data-campo="${i}" data-chave="${chave}" ${c[chave] && pode ? 'checked' : ''} ${pode ? '' : 'disabled'}> ${texto}</label>`;
+    return `<div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
+      <div class="flex flex-wrap items-center gap-2">
+        <input type="text" maxlength="60" data-campo="${i}" data-chave="rotulo" value="${esc(c.rotulo)}" placeholder="Nome do campo"
+               aria-label="Nome do campo ${i + 1}" class="flex-1 min-w-[180px] bg-white ${base}">
+        <select data-campo="${i}" data-chave="tipo_dado" aria-label="Tipo do campo ${i + 1}" ${antigo ? 'disabled title="O tipo de um campo já criado não muda"' : ''}
+                class="bg-white ${base}">${TIPOS_DADO.map(([v, texto]) =>
+                  `<option value="${v}" ${v === c.tipo_dado ? 'selected' : ''}>${texto}</option>`).join('')}</select>
+        <button type="button" data-subir="${i}" class="accao text-slate-600 hover:bg-slate-200" title="Subir" ${i === 0 ? 'disabled' : ''}>
+          <i data-lucide="arrow-up" class="w-4 h-4"></i></button>
+        <button type="button" data-descer="${i}" class="accao text-slate-600 hover:bg-slate-200" title="Descer" ${i === estado.campos.length - 1 ? 'disabled' : ''}>
+          <i data-lucide="arrow-down" class="w-4 h-4"></i></button>
+        <button type="button" data-retirar="${i}" class="accao text-red-600 hover:bg-red-50" title="Retirar o campo">
+          <i data-lucide="trash-2" class="w-4 h-4"></i></button>
+      </div>
+      ${c.tipo_dado === 'lista' ? `<input type="text" data-campo="${i}" data-chave="opcoes" value="${esc(c.opcoes)}"
+          placeholder="As opções, separadas por ponto e vírgula: S; M; L; XL" aria-label="Opções do campo ${i + 1}"
+          class="w-full mt-2 bg-white ${base}">` : ''}
+      <div class="flex flex-wrap gap-x-5 gap-y-1 mt-2">
+        ${marca('obrigatorio', 'Obrigatório', c.tipo_dado !== 'simnao')}
+        ${marca('unico', 'Não se repete', c.tipo_dado === 'texto' || c.tipo_dado === 'numero')}
+        ${marca('na_tabela', 'Aparece na tabela', c.tipo_dado !== 'longo')}
+      </div>
+    </div>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+function modoEscolhido() {
+  const r = document.querySelector('input[name="tModo"]:checked');
+  return r ? r.value : '';
+}
+
+function acertarModo() {
+  document.getElementById('caixaRotLocal').classList.toggle('hidden', modoEscolhido() !== 'local');
+}
+
+/** Abre o formulário: vazio para um tipo novo, ou com o que o tipo já tem. */
+function abrirFormulario(t) {
+  estado.editar = t || null;
+  const d = t || { modo: '', tem_avarias: false, usa_marca: true, usa_modelo: true, usa_serie: true, campos: [], icone: 'box' };
+  document.getElementById('formTitulo').textContent = t ? `Alterar: ${t.nome}` : 'Novo tipo de equipamento';
+  document.getElementById('formAjuda').textContent = t
+    ? 'As alterações valem logo para toda a gente.' : 'Depois de gravado aparece na entrada, pronto a receber equipamento.';
+  document.getElementById('tNome').value = d.nome || '';
+  document.getElementById('tSingular').value = d.singular || '';
+  document.getElementById('tDescricao').value = d.descricao || '';
+  document.getElementById('tRotIdent').value = d.rotulo_identificacao || '';
+  document.getElementById('tRotLocal').value = d.rotulo_local || '';
+  document.getElementById('tAvarias').checked = !!d.tem_avarias;
+  document.getElementById('tMarca').checked = !!d.usa_marca;
+  document.getElementById('tModelo').checked = !!d.usa_modelo;
+  document.getElementById('tSerie').checked = !!d.usa_serie;
+  for (const r of document.querySelectorAll('input[name="tModo"]')) r.checked = r.value === d.modo;
+
+  // Com equipamento registado o modo e as avarias ficam como estão (o servidor recusa a mudança).
+  const preso = !!(t && t.equipamentos);
+  for (const r of document.querySelectorAll('input[name="tModo"]')) r.disabled = preso;
+  document.getElementById('tAvarias').disabled = preso;
+  document.getElementById('avisoModo').classList.toggle('hidden', !preso);
+
+  estado.icone = d.icone || 'box';
+  estado.campos = d.campos.map(c => ({ ...c, opcoes: (c.opcoes || []).join('; ') }));
+  desenharIcones();
+  desenharCampos();
+  acertarModo();
+  const form = document.getElementById('formTipo');
+  form.classList.remove('hidden');
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('tNome').focus({ preventScroll: true });
+}
+
+function fecharFormulario() {
+  document.getElementById('formTipo').classList.add('hidden');
+  estado.editar = null;
+}
+
+async function gravar() {
+  const corpo = {
+    nome: document.getElementById('tNome').value.trim(),
+    singular: document.getElementById('tSingular').value.trim(),
+    descricao: document.getElementById('tDescricao').value.trim(),
+    icone: estado.icone,
+    modo: modoEscolhido(),
+    tem_avarias: document.getElementById('tAvarias').checked,
+    rotulo_identificacao: document.getElementById('tRotIdent').value.trim(),
+    rotulo_local: document.getElementById('tRotLocal').value.trim(),
+    usa_marca: document.getElementById('tMarca').checked,
+    usa_modelo: document.getElementById('tModelo').checked,
+    usa_serie: document.getElementById('tSerie').checked,
+    campos: estado.campos,
+  };
+  // O que o servidor também recusa, dito aqui com o campo à frente.
+  if (!corpo.nome) { document.getElementById('tNome').focus(); throw new Error('Falta o nome do tipo.'); }
+  if (!corpo.singular) { document.getElementById('tSingular').focus(); throw new Error('Falta o nome de um só.'); }
+  if (!corpo.modo) throw new Error('Escolha como se usa: entrega-se a pessoas ou fica num local.');
+
+  if (estado.editar) {
+    const retirados = estado.editar.campos.filter(c => !estado.campos.some(x => x.codigo === c.codigo));
+    if (retirados.length && estado.editar.equipamentos
+        && !confirm(`Retirar ${retirados.map(c => `"${c.rotulo}"`).join(', ')}? O que já foi escrito ${retirados.length === 1 ? 'nesse campo' : 'nesses campos'} deixa de se ver.`)) return false;
+    await enviar('/' + estado.editar.codigo, corpo, 'PUT');
+    toast('Tipo alterado.');
+  } else {
+    await enviar('/', corpo);
+    toast('Tipo criado. Já aparece na entrada.');
+  }
+  fecharFormulario();
+  await carregar();
+  return true;
+}
+
+async function apagar(codigo) {
+  const t = estado.tipos.find(x => x.codigo === codigo);
+  if (!t || !confirm(`Apagar o tipo "${t.nome}"? Sai da entrada e a definição dos campos perde-se.`)) return;
+  await pedir('/' + codigo, { method: 'DELETE' });
+  toast('Tipo apagado.');
+  if (estado.editar && estado.editar.codigo === codigo) fecharFormulario();
+  await carregar();
+}
+
+// ─── Ligações ──────────────────────────────────────────────
+
+document.addEventListener('click', async ev => {
+  const alvo = ev.target.closest('#btnNovoTipo,#btnCancelar,#btnMaisCampo,[data-editar],[data-apagar],[data-icone],[data-subir],[data-descer],[data-retirar]');
+  if (!alvo) return;
+  const d = alvo.dataset;
+  try {
+    if (alvo.id === 'btnNovoTipo') return abrirFormulario(null);
+    if (alvo.id === 'btnCancelar') return fecharFormulario();
+    if (alvo.id === 'btnMaisCampo') {
+      estado.campos.push({ rotulo: '', tipo_dado: 'texto', opcoes: '', obrigatorio: false, unico: false, na_tabela: false });
+      desenharCampos();
+      const novos = document.querySelectorAll('#tCampos input[data-chave="rotulo"]');
+      return novos[novos.length - 1].focus();
+    }
+    if (d.editar) return abrirFormulario(estado.tipos.find(t => t.codigo === d.editar));
+    if (d.apagar) return await apagar(d.apagar);
+    if (d.icone) { estado.icone = d.icone; return desenharIcones(); }
+    const trocar = (i, j) => {
+      [estado.campos[i], estado.campos[j]] = [estado.campos[j], estado.campos[i]];
+      desenharCampos();
+    };
+    if (d.subir !== undefined) return trocar(Number(d.subir), Number(d.subir) - 1);
+    if (d.descer !== undefined) return trocar(Number(d.descer), Number(d.descer) + 1);
+    if (d.retirar !== undefined) { estado.campos.splice(Number(d.retirar), 1); return desenharCampos(); }
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+});
+
+// O que se escreve numa linha de campo vai logo para o `estado.campos`.
+document.getElementById('tCampos').addEventListener('input', ev => {
+  const el = ev.target;
+  if (el.dataset.campo === undefined) return;
+  const c = estado.campos[Number(el.dataset.campo)];
+  c[el.dataset.chave] = el.type === 'checkbox' ? el.checked : el.value;
+  // Mudar o tipo muda o que a linha oferece (as opções, as marcas possíveis).
+  if (el.dataset.chave === 'tipo_dado') desenharCampos();
+});
+
+for (const r of document.querySelectorAll('input[name="tModo"]')) r.addEventListener('change', acertarModo);
+
+// Quem escreve o plural e ainda não tocou no singular fica com um ponto de
+// partida: é mais fácil tirar um "s" do que lembrar-se de que o campo existe.
+document.getElementById('tNome').addEventListener('blur', ev => {
+  const singular = document.getElementById('tSingular');
+  if (!singular.value.trim()) singular.value = ev.target.value.trim();
+});
+
+document.getElementById('formTipo').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const botao = document.getElementById('btnGravar');
+  botao.disabled = true;
+  try {
+    await gravar();
+  } catch (err) {
+    toast(err.message, 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+// ─── Arranque ──────────────────────────────────────────────
+
+/**
+ * O ecrã de paragem — o mesmo das outras páginas e do `iga.html`.
+ *
+ * A `conta` existe porque quem cá chega sem acesso vai ter de pedir a alguém que
+ * lho dê, e a primeira coisa que lhe perguntam do outro lado é "qual é a conta?".
+ * O `#app` esconde-se por baixo: a cortina é opaca, mas sem isto a página ficava
+ * toda navegável pelo Tab por trás dela.
+ */
+function mostrarErro(titulo, detalhe, conta) {
+  document.getElementById('erroTitulo').textContent = titulo;
+  document.getElementById('erroDetalhe').textContent = detalhe || '';
+  const linhaConta = document.getElementById('erroConta');
+  linhaConta.innerHTML = conta
+    ? `Indique esta conta ao pedir o acesso:<span class="block mt-1 font-mono text-sm font-bold text-slate-900 select-all">${esc(conta)}</span>`
+    : '';
+  linhaConta.classList.toggle('hidden', !conta);
+  document.getElementById('app').classList.add('hidden');
+  // O atalho "Saltar para o conteúdo" vive fora do #app: sem isto ficava a ser o
+  // único elemento tabulável com a cortina em cima, e a saltar para o que ela
+  // acabou de esconder.
+  const atalho = document.querySelector('a[href="#conteudo"]');
+  if (atalho) atalho.hidden = true;
+  document.getElementById('ecraErro').classList.remove('hidden');
+}
+
+async function arrancar() {
+  try {
+    estado.permissoes = await pedir('/permissoes', null, API_MODULO);
+  } catch (err) {
+    console.error('[iga] /permissoes falhou:', (err && err.message) || err);
+    return mostrarErro('Não foi possível confirmar as permissões.',
+      'Volte a carregar a página. Se o problema se mantiver, contacte o NSIC.');
+  }
+  if (!estado.permissoes.username) {
+    return mostrarErro('Não foi possível identificar a sua conta.',
+      'Volte a carregar a página; se o problema se mantiver, contacte o NSIC.');
+  }
+  // A página inteira é da administração: quem não é, não tem aqui nada para ver.
+  if (!estado.permissoes.canAdmin) {
+    return mostrarErro('Reservado à administração do inventário.',
+      'Criar e alterar tipos de equipamento é do grupo "IGA-Admin". Solicite o acesso ao NSIC.',
+      estado.permissoes.username);
+  }
+
+  document.getElementById('nomeUtilizador').textContent =
+    estado.permissoes.nome || estado.permissoes.username || '—';
+  document.getElementById('etiquetaAcesso').textContent = 'Administração';
+
+  try {
+    await carregar();
+    // Vindo da página de um tipo ("Campos deste tipo"), abre logo esse.
+    const pedido = new URLSearchParams(location.search).get('tipo');
+    const t = pedido && estado.tipos.find(x => x.codigo === pedido);
+    if (t) abrirFormulario(t);
+  } catch (err) {
+    toast(err.message, 'erro');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+arrancar();
+</script>
+</body>
+</html>

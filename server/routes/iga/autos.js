@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Abates e autos de abate — as mesmas rotas para os cinco tipos.
+ * Abates e autos de abate — as mesmas rotas para todos os tipos.
  *
  * Cada router de tipo chama `montarAutos(router, cfg)` **antes** das suas rotas
  * `/:id`: o `/autos` é um nome fixo e o `/:id` apanhava-o (ver o CLAUDE.md, a
@@ -93,10 +93,16 @@ async function autoResumo(autoId) {
  *   atribuicoes: 'dbo.radios_atribuicoes' | null,
  *   descricao, marca, serie, identificacao: expressões SQL sobre o alias `e`,
  *   recalcular: async (pool, id) => {} | null,
+ *   filtro: '' | ' AND <condição sobre a tabela de abates>',
  * }
+ *
+ * O `filtro` é só dos tipos criados pelo ecrã (ver a 009 e o `equipamentos.js`):
+ * esses partilham a tabela de abates, e "todos os propostos soltos" tem de ser
+ * "todos os deste tipo". Os tipos com tabelas próprias não o trazem. Pela mesma
+ * razão o `equip` desses é uma subconsulta, e é por isso que leva sempre alias.
  */
 function montarAutos(router, cfg) {
-  const t = cfg;
+  const t = { filtro: '', ...cfg };
 
   async function poolTipo(res) {
     const pool = await t.pool;
@@ -139,7 +145,7 @@ function montarAutos(router, cfg) {
       if (!pool) return;
 
       const existe = await pool.request().input('id', sql.Int, id)
-        .query(`SELECT 1 AS ok FROM ${t.equip} WHERE id = @id`);
+        .query(`SELECT 1 AS ok FROM ${t.equip} e WHERE e.id = @id`);
       if (!existe.recordset.length) return res.status(404).json({ error: 'Equipamento não encontrado.' });
 
       const ja = await pool.request().input('id', sql.Int, id)
@@ -216,7 +222,7 @@ function montarAutos(router, cfg) {
         modulo.request().input('tipo', sql.VarChar(20), t.tipo)
           .query('SELECT * FROM dbo.autos_abate WHERE tipo = @tipo ORDER BY ano DESC, numero DESC'),
         pool.request().query(`SELECT auto_id, COUNT(*) AS n FROM ${t.abates} WHERE auto_id IS NOT NULL GROUP BY auto_id`),
-        pool.request().query(`SELECT COUNT(*) AS n FROM ${t.abates} WHERE estado = 'proposto' AND auto_id IS NULL`),
+        pool.request().query(`SELECT COUNT(*) AS n FROM ${t.abates} WHERE estado = 'proposto' AND auto_id IS NULL${t.filtro}`),
       ]);
       const n = new Map(contagens.recordset.map(c => [c.auto_id, c.n]));
       const ano = new Date().getFullYear();
@@ -252,7 +258,7 @@ function montarAutos(router, cfg) {
       if (!pool) return;
 
       const soltos = await pool.request()
-        .query(`SELECT COUNT(*) AS n FROM ${t.abates} WHERE estado = 'proposto' AND auto_id IS NULL`);
+        .query(`SELECT COUNT(*) AS n FROM ${t.abates} WHERE estado = 'proposto' AND auto_id IS NULL${t.filtro}`);
       if (!soltos.recordset[0].n) {
         return res.status(409).json({ error: `Não há ${t.nome.toLowerCase()} propostos para abate fora de um auto.` });
       }
@@ -276,7 +282,7 @@ function montarAutos(router, cfg) {
       criado = r.recordset[0];
 
       await pool.request().input('auto', sql.Int, criado.id)
-        .query(`UPDATE ${t.abates} SET auto_id = @auto WHERE estado = 'proposto' AND auto_id IS NULL`);
+        .query(`UPDATE ${t.abates} SET auto_id = @auto WHERE estado = 'proposto' AND auto_id IS NULL${t.filtro}`);
 
       res.status(201).json({ id: criado.id, numero_texto: numeroDoAuto(criado) });
     } catch (err) {
@@ -351,7 +357,7 @@ function montarAutos(router, cfg) {
       const pool = await poolTipo(res);
       if (!pool) return;
       const r = await pool.request().input('auto', sql.Int, a.id)
-        .query(`UPDATE ${t.abates} SET auto_id = @auto WHERE estado = 'proposto' AND auto_id IS NULL`);
+        .query(`UPDATE ${t.abates} SET auto_id = @auto WHERE estado = 'proposto' AND auto_id IS NULL${t.filtro}`);
       res.json({ acrescentados: r.rowsAffected[0] });
     } catch (err) {
       falhou(res, 'acrescentar ao auto', err);

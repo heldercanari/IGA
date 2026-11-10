@@ -17,6 +17,8 @@
  *   /api/iga/maquinas    → ./maquinas.js     (idem — máquinas fotográficas)
  *   /api/iga/tablets     → ./tablets.js      (idem)
  *   /api/iga/gps         → ./gps.js          (idem — os GPS dos reboques)
+ *   /api/iga/tipos       → ./tipos.js        (os tipos criados pelo ecrã — a definição)
+ *   /api/iga/eq/:tipo    → ./equipamentos.js (idem — os equipamentos de cada um)
  *
  * Cada tipo tem o seu ficheiro; **base própria só quando é preciso**. Os
  * telemóveis têm-na por decisão de desenvolvimento (ver a 002); as impressoras
@@ -47,5 +49,12 @@ router.use('/impressoras', require('./impressoras'));
 router.use('/maquinas', require('./maquinas'));
 router.use('/tablets', require('./tablets'));
 router.use('/gps', require('./gps'));
+
+// ─── Os tipos criados pelo ecrã (migração 009) ─────────────
+// Não é um router por tipo: é um par para todos. O `/tipos` guarda a definição
+// de cada um (só a administração a altera) e o `/eq/:tipo` os equipamentos.
+// Os seis de cima não passam por aqui.
+router.use('/tipos', require('./tipos').router);
+router.use('/eq/:tipo', require('./equipamentos'));
 
 module.exports = router;

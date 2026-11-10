@@ -201,8 +201,9 @@ impressoras: **não se entrega a ninguém** — está numa viatura —, sem `_at
   número quando o é.
 - ⚠️ **O `PUT /gps/:id` grava só os campos que vierem**, como o das impressoras: "mudar de
   viatura" manda só os três da viatura. Não o uniformizes com o dos telemóveis.
-- **Um tipo novo entra no `CK_autos_abate_tipo`**, senão os autos de abate dele são recusados
-  pela base — foi o que a `008` teve de fazer.
+- **O `CK_autos_abate_tipo` já não existe** (saiu na `009`): a `008` teve de lhe acrescentar o
+  `gps`, e com tipos criados pelo ecrã a lista deixou de se poder escrever à mão. Quem garante
+  o `tipo` de um auto é o servidor, que só os cria a partir do router de um tipo.
 
 ## Os tablets: o molde completo, e a ficha mostra tudo
 
@@ -224,6 +225,44 @@ O quinto tipo (`005`) é o molde dos telemóveis inteiro — entregas a pessoas,
 - **"UTILIZADOR" nas folhas não é uma pessoa**: é a `finalidade` ("Na Minha Rua Lx"). Quem tem o
   tablet é a entrega. Só 25 dos 34 têm inventário; nos outros a tabela mostra o número do cartão.
 
+## Tipos criados pelo ecrã: a excepção ao "uma página por tipo"
+
+Decisão de 2026-11-10: **a administração cria tipos de equipamento sem programação**, no
+`public/tipos.html`. A migração `009` e o README (*Tipos criados pelo ecrã*) têm o desenho; aqui
+ficam as fronteiras, para ninguém as apagar por parecerem incoerência.
+
+- ⚠️ **Os seis tipos feitos à mão não passam para a ferramenta.** Rádios, telemóveis,
+  impressoras, máquinas, tablets e GPS continuam com a sua página, o seu router e as suas
+  tabelas, e tudo o que este ficheiro diz deles mantém-se. **Não os "migres" para o motor
+  genérico**, nem ao contrário — a pergunta foi feita e a resposta foi que ficam como estão.
+- **Estes tipos partilham uma página e um router, e é a única excepção** à regra de baixo:
+  `public/equipamento.html?tipo=<código>` e `server/routes/iga/equipamentos.js` (`/eq/:tipo`),
+  com a definição em `tipos.js` (`/tipos`). Não é o motor comum que as seis páginas recusaram:
+  é o que serve os tipos que não têm programador.
+- **As tabelas também são partilhadas** (`equipamentos`, `equipamentos_atribuicoes`, `_avarias`,
+  `_abates`), separadas pelo `tipo_id` — ao contrário do "cada tipo com as suas tabelas". Criar
+  tabelas em execução pedia DDL à conta da aplicação.
+- ⚠️ **Os campos adicionais vivem em `equipamentos.valores`, em JSON, e nenhuma consulta usa
+  funções de JSON** (`JSON_VALUE`, `OPENJSON`): não se sabe a versão do SQL Server da intranet.
+  A procura faz `LIKE` no texto, e a unicidade de um campo confere-se no `equipamentos.js`.
+  Os campos de base (identificação, marca, modelo, série, local) são colunas a sério — é delas
+  que o auto de abate precisa.
+- **O `codigo` de um tipo e o de um campo não mudam depois de criados**: o do tipo está nos URL
+  e no `autos_abate.tipo`; o do campo é a chave dos valores gravados. Mudar o nome muda só o
+  rótulo. Pela mesma razão **retirar um campo não apaga valores** — deixam de se ver.
+- **O modo ('pessoas' ou 'local') e as avarias só mudam com o tipo vazio.** Não há 'local' com
+  histórico nem 'pessoas' com local: quem precisar das duas coisas acrescenta um campo.
+- **Criar, alterar e apagar tipos é só de `canAdmin`.** Registar equipamento num tipo é de quem
+  tem edição, como nos outros.
+- ⚠️ **Nos autos de abate, a tabela é a mesma para todos estes tipos**, e por isso o `autos.js`
+  ganhou o `cfg.filtro`: sem ele, "os propostos soltos" de um tipo levava os dos outros. O
+  `equipamentos.js` monta um router de autos por tipo (`autosPorTipo`), acima do `/:id`.
+- **A entrada junta-os ao `TIPOS` em execução** (`tipoDoEcra()` no `iga.html`), a seguir aos
+  seis escritos à mão. **Os ícones são uma lista fechada**, igual no `ICONES` do `tipos.js` e
+  no do `iga.html`: um nome que entre num tem de entrar no outro.
+- **Na intranet, as duas páginas têm de ser servidas como as outras** (`equipamento.html` e
+  `tipos.html` — o `PAGINAS` do harness é o exemplo).
+
 ## Autos de abate: propor, auto, homologar
 
 Desde a `006`/`007` abater não é um clique: **propõe-se** (fica `estado = 'proposto'` na
@@ -240,7 +279,7 @@ Desde a `006`/`007` abater não é um clique: **propõe-se** (fica `estado = 'pr
   estado (normalmente 'avariado') e **não se entrega** — o `/atribuir` recusa-o.
 - **As rotas são as mesmas em todos os tipos**, em `server/routes/iga/autos.js` (`montarAutos()`),
   chamado em cada router **antes do `/:id`**. As páginas continuam independentes: o bloco do
-  ecrã está copiado nas cinco, de propósito.
+  ecrã está copiado em todas (e no `equipamento.html`), de propósito.
 - ⚠️ **O cabeçalho está na base do módulo e as linhas na base do tipo.** Nos telemóveis são
   bases diferentes em desenvolvimento: o `autos.js` lê uma e depois a outra, sem JOIN, e o
   `telemoveis_abates.auto_id` não tem FK (ver a `007`).
@@ -294,7 +333,8 @@ Desde a `006`/`007` abater não é um clique: **propõe-se** (fica `estado = 'pr
 ## Uma página por tipo de equipamento
 
 - **`public/radios.html`, `public/telemoveis.html`, `public/impressoras.html` e
-  `public/maquinas.html`, `public/tablets.html` e `public/gps.html` são independentes, e é deliberado.** Não há motor partilhado entre elas, nem separadores dentro
+  `public/maquinas.html`, `public/tablets.html` e `public/gps.html` são independentes, e é deliberado.**
+  (A única página partilhada é a dos tipos criados pelo ecrã — ver a secção deles, acima.) Não há motor partilhado entre elas, nem separadores dentro
   de uma página: cada tipo tem o seu ecrã, e o próximo equipamento será outra página. Foi
   decidido assim com o custo à vista — **não "arrumes" isto para um ficheiro comum** por
   parecer duplicação; é uma escolha, não um descuido. Se algum dia for para mudar, é conversa
