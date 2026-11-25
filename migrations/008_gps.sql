@@ -79,8 +79,9 @@ GO
 
 -- ── 3. Os autos de abate passam a aceitar GPS ──────────────
 -- O CHECK da 006 lista os tipos à mão: um tipo novo tem de entrar nele.
-IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
-               WHERE name = 'CK_autos_abate_tipo' AND definition LIKE '%gps%')
+-- Só quando ele existe: a 009 tira-o, e sem isto repetir a 008 depois dela rebentava no DROP.
+IF EXISTS (SELECT 1 FROM sys.check_constraints
+           WHERE name = 'CK_autos_abate_tipo' AND definition NOT LIKE '%gps%')
 BEGIN
     ALTER TABLE dbo.autos_abate DROP CONSTRAINT CK_autos_abate_tipo;
     ALTER TABLE dbo.autos_abate ADD CONSTRAINT CK_autos_abate_tipo
